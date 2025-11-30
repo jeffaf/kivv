@@ -1,55 +1,209 @@
+// =============================================================================
+// kivv - Shared TypeScript Types
+// =============================================================================
+// All interfaces match the D1 database schema exactly
+// Used across MCP server and automation workers
+// =============================================================================
+
+// =============================================================================
+// Database Entity Types
+// =============================================================================
+
 /**
- * Shared TypeScript types and interfaces for kivv
+ * User entity - Matches users table in D1
  */
-
 export interface User {
-  id: string;
+  id: number;
+  username: string;
   email: string;
-  name: string;
   api_key: string;
+  display_name: string | null;
   created_at: string;
-  updated_at: string;
+  last_login: string | null;
+  is_active: boolean;
 }
 
+/**
+ * Topic entity - Matches topics table in D1
+ * Represents a user's research topic with arXiv query and settings
+ */
 export interface Topic {
-  id: string;
-  user_id: string;
-  name: string;
-  keywords: string[];
-  categories: string[];
+  id: number;
+  user_id: number;
+  topic_name: string;
+  arxiv_query: string;
+  enabled: boolean;
+  relevance_threshold: number;
+  max_papers_per_day: number;
+  generate_summaries: boolean;
   created_at: string;
-  updated_at: string;
+  last_collection_at: string | null;
+  last_cursor: string | null;
 }
 
+/**
+ * Paper entity - Matches papers table in D1
+ * Stores arXiv papers with summaries and metadata
+ */
 export interface Paper {
-  id: string;
+  id: number;
   arxiv_id: string;
+  title: string;
+  authors: string; // JSON array as string
+  abstract: string;
+  categories: string; // JSON array as string
+  published_date: string;
+  pdf_url: string;
+  r2_key: string | null;
+  summary: string | null;
+  summary_generated_at: string | null;
+  summary_model: string | null;
+  relevance_score: number | null;
+  content_hash: string | null;
+  collected_for_user_id: number | null;
+  created_at: string;
+}
+
+/**
+ * UserPaperStatus entity - Matches user_paper_status table in D1
+ * Tracks per-user exploration, bookmarks, and notes for papers
+ */
+export interface UserPaperStatus {
+  user_id: number;
+  paper_id: number;
+  explored: boolean;
+  bookmarked: boolean;
+  notes: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+/**
+ * CostLog entity - Matches cost_logs table in D1
+ * Tracks API usage costs for budget enforcement
+ */
+export interface CostLog {
+  id: number;
+  date: string; // YYYY-MM-DD format
+  user_id: number | null;
+  service: string; // 'haiku' | 'sonnet'
+  papers_processed: number;
+  tokens_input: number;
+  tokens_output: number;
+  cost_usd: number;
+  created_at: string;
+}
+
+// =============================================================================
+// Cloudflare Workers Environment Bindings
+// =============================================================================
+
+/**
+ * Environment bindings for Cloudflare Workers
+ * Includes D1 database, KV namespace, R2 bucket, and environment variables
+ */
+export interface Env {
+  // Cloudflare bindings
+  DB: D1Database;
+  CACHE: KVNamespace;
+  PAPERS: R2Bucket;
+
+  // Environment variables
+  CLAUDE_API_KEY: string;
+  D1_DATABASE_ID: string;
+  KV_NAMESPACE_ID: string;
+  R2_BUCKET_NAME: string;
+}
+
+// =============================================================================
+// API Response Types
+// =============================================================================
+
+/**
+ * Paper with user-specific status fields
+ * Used when returning papers to MCP tools
+ */
+export interface PaperWithStatus extends Paper {
+  explored?: boolean;
+  bookmarked?: boolean;
+  notes?: string | null;
+}
+
+/**
+ * arXiv API paper format (before DB insertion)
+ * Parsed from arXiv Atom XML feed
+ */
+export interface ArxivApiPaper {
+  id: string;
   title: string;
   authors: string[];
   abstract: string;
   categories: string[];
-  published_date: string;
+  published: string;
   pdf_url: string;
-  created_at: string;
 }
 
-export interface Summary {
-  id: string;
-  paper_id: string;
-  user_id: string;
-  summary_text: string;
-  key_insights: string[];
-  relevance_score: number;
+/**
+ * Relevance score result from Haiku triage
+ */
+export interface RelevanceScore {
+  paper_id: number;
+  score: number;
+  threshold: number;
+  passed: boolean;
+}
+
+/**
+ * Summary generation result from Sonnet
+ */
+export interface SummaryResult {
+  paper_id: number;
+  summary: string;
   model: string;
-  tokens_used: number;
-  created_at: string;
+  tokens_input: number;
+  tokens_output: number;
+  cost_usd: number;
 }
 
-export interface UserPaper {
-  user_id: string;
-  paper_id: string;
-  topic_id: string;
-  status: 'new' | 'read' | 'archived';
-  relevance_score: number;
-  created_at: string;
+// =============================================================================
+// MCP Tool Request/Response Types
+// =============================================================================
+
+/**
+ * Request for list_library MCP tool
+ */
+export interface ListLibraryRequest {
+  limit?: number;
+  offset?: number;
+  explored?: boolean | null; // null = all, true = only explored, false = only unexplored
+  bookmarked?: boolean | null;
+}
+
+/**
+ * Request for search_papers MCP tool
+ */
+export interface SearchPapersRequest {
+  query: string;
+  limit?: number;
+}
+
+/**
+ * Request for mark_explored MCP tool
+ */
+export interface MarkExploredRequest {
+  paper_ids: number[];
+  explored: boolean;
+}
+
+// =============================================================================
+// Error Types
+// =============================================================================
+
+/**
+ * Standardized API error response
+ */
+export interface ApiError {
+  error: string;
+  code: string;
+  details?: Record<string, unknown>;
 }
