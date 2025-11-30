@@ -1,10 +1,10 @@
 name = "kivv-mcp"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
 
 # Workers configuration
 workers_dev = true
-route = ""
 
 # D1 Database binding
 [[d1_databases]]

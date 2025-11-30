@@ -1,4 +1,6 @@
 import { defineWorkersConfig } from '@cloudflare/vitest-pool-workers/config';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 export default defineWorkersConfig({
   test: {
@@ -7,8 +9,13 @@ export default defineWorkersConfig({
         wrangler: {
           configPath: './mcp-server/wrangler.toml',
         },
+        miniflare: {
+          // Initialize database schema before tests
+          d1Databases: ['DB'],
+        },
       },
     },
+    setupFiles: ['./tests/setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
