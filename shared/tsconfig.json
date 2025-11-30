@@ -8,15 +8,15 @@
     "allowJs": false,
     "checkJs": false,
     "outDir": "./dist",
-    "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "noEmit": false,
     "composite": true,
+    "declaration": true,
     "types": ["@cloudflare/workers-types"]
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", ".wrangler"]
+  "include": ["./**/*.ts"],
+  "exclude": ["node_modules", "dist"]
 }

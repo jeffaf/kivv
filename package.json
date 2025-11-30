@@ -6,16 +6,21 @@
   "workspaces": [
     "mcp-server",
     "automation",
-    "dashboard",
     "shared"
   ],
+  "packageManager": "bun@1.1.38",
   "scripts": {
-    "test": "npm run test --workspaces",
-    "deploy:mcp": "npm run deploy --workspace=mcp-server",
-    "deploy:automation": "npm run deploy --workspace=automation",
-    "deploy:all": "npm run deploy:mcp && npm run deploy:automation",
-    "dev:mcp": "npm run dev --workspace=mcp-server",
-    "dev:automation": "npm run dev --workspace=automation"
+    "build": "bun run build --filter=*",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:security": "vitest run tests/security",
+    "type-check": "tsc --noEmit",
+    "deploy:mcp": "cd mcp-server && wrangler deploy",
+    "deploy:automation": "cd automation && wrangler deploy",
+    "deploy:all": "bun run deploy:mcp && bun run deploy:automation",
+    "dev:mcp": "cd mcp-server && wrangler dev",
+    "dev:automation": "cd automation && wrangler dev"
   },
   "keywords": [
     "arxiv",
@@ -33,6 +38,15 @@
     "url": "https://github.com/jeffaf/kivv.git"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.0.0",
+    "bun": ">=1.1.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.5.26",
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "@types/bun": "^1.1.14",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "wrangler": "^3.102.0"
   }
 }

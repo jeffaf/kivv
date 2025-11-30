@@ -27,8 +27,8 @@ See [docs/setup.md](docs/setup.md) for detailed setup instructions.
 
 - Cloudflare account (jeffbarron@protonmail.com)
 - Anthropic Claude API key
-- Node.js 20+ and npm/bun
-- Wrangler CLI (`npm install -g wrangler`)
+- **Bun 1.1+** (package manager - install from [bun.sh](https://bun.sh))
+- Wrangler CLI (installed automatically via bun)
 
 ### Installation
 
@@ -37,37 +37,79 @@ See [docs/setup.md](docs/setup.md) for detailed setup instructions.
 git clone https://github.com/jeffaf/kivv.git
 cd kivv
 
-# Install dependencies
-npm install
+# Install dependencies with bun
+bun install
 
-# Copy environment template
-cp .env.example .env
-# Edit .env with your API keys
+# Environment is already configured in .env (git-ignored)
+# Infrastructure already set up:
+# - D1 database: kivv-db (1e80f2bf-462d-4d51-8002-a4cf26013933)
+# - KV namespace: KIVV_CACHE (7f6b7437931c4c268c27d01a4169101b)
+# - R2 bucket: kivv-papers
+```
 
-# Create D1 database
-wrangler d1 create kivv-db
+## Project Structure
 
-# Deploy MCP server
-cd mcp-server
-wrangler deploy
+```
+kivv/
+├── mcp-server/          # MCP Server Worker (Claude integration)
+├── automation/          # Daily automation Worker (cron)
+├── shared/              # Shared types and utilities
+├── tests/
+│   ├── security/       # Security tests (auth, injection, XSS)
+│   ├── integration/    # MCP tool integration tests
+│   └── unit/           # Unit tests
+├── .checkpoint/         # Development checkpoints
+└── package.json         # Monorepo root with workspaces
 ```
 
 ## Documentation
 
-- [Setup Guide](docs/setup.md)
-- [API Documentation](docs/api.md)
-- [Deployment Guide](docs/deployment.md)
-- [PRD (Product Requirements Document)](https://github.com/jeffaf/kivv/blob/main/docs/kivv-prd-final.md)
+- [Implementation Plan](IMPLEMENTATION-PLAN.md) - Chunked development guide
+- [Setup Checklist](SETUP-CHECKLIST.md) - Infrastructure setup
+- [PRD (Full Spec)](https://github.com/jeffaf/kivv) - Complete technical specification
 
 ## Development
 
 ```bash
-# Run MCP server locally
-cd mcp-server
-wrangler dev
+# Run type checking
+bun run type-check
 
-# Run tests
-npm test
+# Run all tests
+bun test
+
+# Run security tests specifically
+bun run test:security
+
+# Run tests in watch mode
+bun run test:watch
+
+# Run MCP server locally
+bun run dev:mcp
+
+# Run automation worker locally
+bun run dev:automation
+
+# Build all workspaces
+bun run build
+```
+
+## Testing
+
+The project includes comprehensive test coverage:
+
+- **Security Tests** (100% coverage required):
+  - Authentication (API key validation)
+  - Authorization (user data isolation)
+  - SQL injection prevention
+  - XSS prevention in RSS feeds
+  - Rate limiting enforcement
+
+- **Integration Tests**: End-to-end MCP tool workflows
+- **Unit Tests**: Isolated utility function testing
+
+```bash
+# Run with coverage report
+bun run test:coverage
 ```
 
 ## License
