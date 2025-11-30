@@ -7,6 +7,7 @@ import { HTTP_OK, HTTP_INTERNAL_ERROR } from '../../shared/constants';
 import { listLibrary } from './tools/list-library';
 import { searchPapers } from './tools/search-papers';
 import { markExplored } from './tools/mark-explored';
+import { getUserRSSFeed, getUserAtomFeed } from './feeds/user-feed';
 
 // Define Hono app context with bindings and variables
 type HonoEnv = {
@@ -76,6 +77,22 @@ app.get('/health', async (c) => {
     }, 503); // Service Unavailable
   }
 });
+
+// =============================================================================
+// Public Feed Routes (No Authentication Required)
+// =============================================================================
+
+/**
+ * RSS 2.0 Feed - Public access to user's paper library
+ * GET /feeds/:username/rss.xml
+ */
+app.get('/feeds/:username/rss.xml', getUserRSSFeed);
+
+/**
+ * Atom 1.0 Feed - Public access to user's paper library
+ * GET /feeds/:username/atom.xml
+ */
+app.get('/feeds/:username/atom.xml', getUserAtomFeed);
 
 // Apply authentication to all /mcp/* routes
 app.use('/mcp/*', createAuthMiddleware());
