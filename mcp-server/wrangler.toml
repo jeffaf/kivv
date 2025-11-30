@@ -1,0 +1,27 @@
+name = "kivv-mcp"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# Workers configuration
+workers_dev = true
+route = ""
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "kivv-db"
+database_id = "TO_BE_CONFIGURED"  # Replace with your D1 database ID
+
+# R2 Storage binding
+[[r2_buckets]]
+binding = "PDFS"
+bucket_name = "kivv-papers"
+
+# KV namespace binding
+[[kv_namespaces]]
+binding = "CACHE"
+id = "TO_BE_CONFIGURED"  # Replace with your KV namespace ID
+
+# Environment variables (secrets should be set via wrangler secret put)
+[vars]
+ENVIRONMENT = "production"

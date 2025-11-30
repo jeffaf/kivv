@@ -1,0 +1,38 @@
+{
+  "name": "kivv",
+  "version": "1.0.0",
+  "description": "arXiv Research Assistant - Automated paper discovery and AI-powered summarization",
+  "private": true,
+  "workspaces": [
+    "mcp-server",
+    "automation",
+    "dashboard",
+    "shared"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces",
+    "deploy:mcp": "npm run deploy --workspace=mcp-server",
+    "deploy:automation": "npm run deploy --workspace=automation",
+    "deploy:all": "npm run deploy:mcp && npm run deploy:automation",
+    "dev:mcp": "npm run dev --workspace=mcp-server",
+    "dev:automation": "npm run dev --workspace=automation"
+  },
+  "keywords": [
+    "arxiv",
+    "research",
+    "ai",
+    "mcp",
+    "cloudflare-workers",
+    "claude",
+    "summarization"
+  ],
+  "author": "Jeff Barron <jeffbarron@protonmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jeffaf/kivv.git"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

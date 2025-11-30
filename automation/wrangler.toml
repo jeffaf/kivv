@@ -1,0 +1,30 @@
+name = "kivv-automation"
+main = "src/automation.ts"
+compatibility_date = "2024-01-01"
+
+# Workers configuration
+workers_dev = true
+
+# Cron trigger - runs daily at 9 AM UTC
+[triggers]
+crons = ["0 9 * * *"]
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "kivv-db"
+database_id = "TO_BE_CONFIGURED"  # Replace with your D1 database ID
+
+# R2 Storage binding
+[[r2_buckets]]
+binding = "PDFS"
+bucket_name = "kivv-papers"
+
+# KV namespace binding
+[[kv_namespaces]]
+binding = "CACHE"
+id = "TO_BE_CONFIGURED"  # Replace with your KV namespace ID
+
+# Environment variables
+[vars]
+ENVIRONMENT = "production"

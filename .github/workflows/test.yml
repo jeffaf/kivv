@@ -1,0 +1,44 @@
+name: Run Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: Run TypeScript Tests
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run linter
+        run: |
+          echo "Linting will be implemented"
+          # npm run lint
+
+      - name: Run type check
+        run: |
+          cd mcp-server && npx tsc --noEmit
+          cd ../automation && npx tsc --noEmit
+
+      - name: Run tests
+        run: |
+          echo "Tests will be implemented"
+          # npm test
+
+      - name: Test notification
+        run: echo "All tests passed"

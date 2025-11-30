@@ -1,0 +1,66 @@
+# Environment variables - CRITICAL: Never commit these!
+.env
+.env.*
+!.env.example
+.env.local
+.env.*.local
+
+# API Keys and Secrets
+*.key
+*.pem
+secrets/
+credentials.json
+.credentials
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+.nyc_output
+*.lcov
+
+# Build outputs
+dist/
+build/
+.wrangler/
+.output/
+
+# Cloudflare Workers
+.dev.vars
+wrangler.toml.local
+
+# SvelteKit
+.svelte-kit/
+.vercel/
+.netlify/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.iml
+
+# TypeScript
+*.tsbuildinfo
+
+# Misc
+.cache/
+.temp/
+tmp/

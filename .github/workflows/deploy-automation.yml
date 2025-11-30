@@ -1,0 +1,40 @@
+name: Deploy Automation Worker
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'automation/**'
+      - 'shared/**'
+      - '.github/workflows/deploy-automation.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy Automation Worker to Cloudflare Workers
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          cd automation
+          npm install
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: automation
+          command: deploy
+
+      - name: Deployment notification
+        run: echo "Automation Worker deployed successfully"
