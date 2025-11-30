@@ -1,4 +1,8 @@
-# kivv - arXiv Research Assistant
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/hero.svg">
+  <img alt="kivv - arXiv Research Assistant" src="assets/hero.svg">
+</picture>
 
 Automated arXiv research paper discovery and AI-powered summarization system with MCP (Model Context Protocol) integration for Claude Desktop. Built as a vibe-coding project, we keep the tooling lightweight and the feedback loop fast so you can stay in flow while shipping research insights.
 

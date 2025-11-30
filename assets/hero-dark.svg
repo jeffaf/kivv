@@ -1,0 +1,96 @@
+<svg width="1200" height="400" viewBox="0 0 1200 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Dark background gradient -->
+    <linearGradient id="bgGradientDark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1e293b;stop-opacity:1" />
+    </linearGradient>
+
+    <!-- Wordmark gradient (lighter blues/purples for dark mode) -->
+    <linearGradient id="wordmarkGradientDark" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#60a5fa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#a78bfa;stop-opacity:1" />
+    </linearGradient>
+
+    <!-- AI accent gradient (bright cyan) -->
+    <linearGradient id="accentGradientDark" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#22d3ee;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#06b6d4;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Dark Background -->
+  <rect width="1200" height="400" fill="url(#bgGradientDark)"/>
+
+  <!-- Abstract paper stack (background element) -->
+  <g opacity="0.15">
+    <!-- Paper 3 (back) -->
+    <rect x="820" y="100" width="300" height="200" rx="8" fill="#60a5fa" transform="rotate(2 970 200)"/>
+    <!-- Paper 2 (middle) -->
+    <rect x="820" y="95" width="300" height="200" rx="8" fill="#3b82f6" transform="rotate(-1 970 195)"/>
+    <!-- Paper 1 (front) -->
+    <rect x="820" y="90" width="300" height="200" rx="8" fill="#1e40af"/>
+  </g>
+
+  <!-- Main wordmark "kivv" -->
+  <text x="80" y="200" font-family="'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="120" font-weight="700" fill="url(#wordmarkGradientDark)" letter-spacing="-4">kivv</text>
+
+  <!-- Tagline -->
+  <text x="80" y="250" font-family="'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="28" font-weight="400" fill="#94a3b8" letter-spacing="-0.5">arXiv Research Assistant</text>
+
+  <!-- Feature badges -->
+  <g transform="translate(80, 290)">
+    <!-- Badge 1: AI-Powered -->
+    <rect x="0" y="0" width="140" height="32" rx="16" fill="url(#accentGradientDark)" opacity="0.2"/>
+    <text x="70" y="21" font-family="'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" font-weight="600" fill="url(#accentGradientDark)" text-anchor="middle">AI-Powered</text>
+
+    <!-- Badge 2: Daily Automation -->
+    <rect x="155" y="0" width="160" height="32" rx="16" fill="#60a5fa" opacity="0.2"/>
+    <text x="235" y="21" font-family="'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" font-weight="600" fill="#60a5fa" text-anchor="middle">Daily Automation</text>
+
+    <!-- Badge 3: MCP Integration -->
+    <rect x="330" y="0" width="160" height="32" rx="16" fill="#a78bfa" opacity="0.2"/>
+    <text x="410" y="21" font-family="'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" font-weight="600" fill="#a78bfa" text-anchor="middle">MCP Integration</text>
+  </g>
+
+  <!-- Icon element: Document with AI sparkle -->
+  <g transform="translate(900, 140)">
+    <!-- Document outline -->
+    <rect x="0" y="0" width="140" height="180" rx="12" fill="#1e293b" stroke="url(#wordmarkGradientDark)" stroke-width="3" opacity="0.9"/>
+
+    <!-- Document lines (representing paper content) -->
+    <line x1="20" y1="30" x2="120" y2="30" stroke="#475569" stroke-width="2" stroke-linecap="round"/>
+    <line x1="20" y1="50" x2="100" y2="50" stroke="#475569" stroke-width="2" stroke-linecap="round"/>
+    <line x1="20" y1="70" x2="110" y2="70" stroke="#475569" stroke-width="2" stroke-linecap="round"/>
+    <line x1="20" y1="90" x2="95" y2="90" stroke="#475569" stroke-width="2" stroke-linecap="round"/>
+
+    <!-- AI sparkle icon (top right of document) -->
+    <g transform="translate(100, 20)">
+      <!-- Sparkle center -->
+      <circle cx="0" cy="0" r="4" fill="url(#accentGradientDark)"/>
+      <!-- Sparkle rays -->
+      <line x1="0" y1="-12" x2="0" y2="-8" stroke="url(#accentGradientDark)" stroke-width="2" stroke-linecap="round"/>
+      <line x1="0" y1="8" x2="0" y2="12" stroke="url(#accentGradientDark)" stroke-width="2" stroke-linecap="round"/>
+      <line x1="-12" y1="0" x2="-8" y2="0" stroke="url(#accentGradientDark)" stroke-width="2" stroke-linecap="round"/>
+      <line x1="8" y1="0" x2="12" y2="0" stroke="url(#accentGradientDark)" stroke-width="2" stroke-linecap="round"/>
+      <line x1="-8" y1="-8" x2="-6" y2="-6" stroke="url(#accentGradientDark)" stroke-width="2" stroke-linecap="round"/>
+      <line x1="6" y1="6" x2="8" y2="8" stroke="url(#accentGradientDark)" stroke-width="2" stroke-linecap="round"/>
+      <line x1="8" y1="-8" x2="6" y2="-6" stroke="url(#accentGradientDark)" stroke-width="2" stroke-linecap="round"/>
+      <line x1="-6" y1="6" x2="-8" y2="8" stroke="url(#accentGradientDark)" stroke-width="2" stroke-linecap="round"/>
+    </g>
+
+    <!-- Summary/digest icon (bottom of document) -->
+    <rect x="20" y="130" width="100" height="30" rx="6" fill="url(#accentGradientDark)" opacity="0.3"/>
+    <text x="70" y="150" font-family="'SF Mono', 'Monaco', 'Courier New', monospace" font-size="11" font-weight="600" fill="url(#accentGradientDark)" text-anchor="middle">SUMMARY</text>
+  </g>
+
+  <!-- Decorative dots pattern (subtle tech aesthetic) -->
+  <g opacity="0.2">
+    <circle cx="750" cy="80" r="3" fill="#60a5fa"/>
+    <circle cx="770" cy="80" r="3" fill="#3b82f6"/>
+    <circle cx="790" cy="80" r="3" fill="#1e40af"/>
+    <circle cx="750" cy="340" r="3" fill="#a78bfa"/>
+    <circle cx="770" cy="340" r="3" fill="#8b5cf6"/>
+    <circle cx="790" cy="340" r="3" fill="#7c3aed"/>
+  </g>
+</svg>
