@@ -116,6 +116,4 @@ bun run test:coverage
 
 MIT
 
-## Author
 
-Jeff Barron (jeffbarron@protonmail.com)
