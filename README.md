@@ -25,7 +25,7 @@ See [docs/setup.md](docs/setup.md) for detailed setup instructions.
 
 ### Prerequisites
 
-- Cloudflare account (jeffbarron@protonmail.com)
+- Cloudflare account with Workers, D1, KV, and R2 enabled
 - Anthropic Claude API key
 - **Bun 1.1+** (package manager - install from [bun.sh](https://bun.sh))
 - Wrangler CLI (installed automatically via bun)
@@ -115,5 +115,3 @@ bun run test:coverage
 ## License
 
 MIT
-
-
