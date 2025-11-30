@@ -37,6 +37,15 @@ export const ANTHROPIC_RATE_LIMIT_REQUESTS = 5;
 /** Anthropic rate limit interval: 1 second */
 export const ANTHROPIC_RATE_LIMIT_INTERVAL_MS = 1000;
 
+/** Anthropic rate limit delay: 200ms between requests (5 req/s = 200ms) */
+export const ANTHROPIC_RATE_LIMIT_MS = 200;
+
+/** Anthropic jitter minimum: 50ms */
+export const ANTHROPIC_JITTER_MIN_MS = 50;
+
+/** Anthropic jitter maximum: 100ms */
+export const ANTHROPIC_JITTER_MAX_MS = 100;
+
 // =============================================================================
 // Model Identifiers
 // =============================================================================
