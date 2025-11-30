@@ -17,28 +17,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v1
         with:
-          node-version: '20'
+          bun-version: '1.1.38'
 
       - name: Install dependencies
-        run: npm install
-
-      - name: Run linter
-        run: |
-          echo "Linting will be implemented"
-          # npm run lint
+        run: bun install --frozen-lockfile
 
       - name: Run type check
-        run: |
-          cd mcp-server && npx tsc --noEmit
-          cd ../automation && npx tsc --noEmit
+        run: bun run type-check
 
       - name: Run tests
-        run: |
-          echo "Tests will be implemented"
-          # npm test
-
-      - name: Test notification
-        run: echo "All tests passed"
+        run: bun test

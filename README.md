@@ -1,6 +1,6 @@
 # kivv - arXiv Research Assistant
 
-Automated arXiv research paper discovery and AI-powered summarization system with MCP (Model Context Protocol) integration for Claude Desktop.
+Automated arXiv research paper discovery and AI-powered summarization system with MCP (Model Context Protocol) integration for Claude Desktop. Built as a vibe-coding project, we keep the tooling lightweight and the feedback loop fast so you can stay in flow while shipping research insights.
 
 ## Features
 
@@ -21,7 +21,7 @@ Automated arXiv research paper discovery and AI-powered summarization system wit
 
 ## Quick Start
 
-See [docs/setup.md](docs/setup.md) for detailed setup instructions.
+See [docs/setup.md](docs/setup.md) for detailed setup instructions and environment variables.
 
 ### Prerequisites
 
@@ -37,7 +37,7 @@ See [docs/setup.md](docs/setup.md) for detailed setup instructions.
 git clone https://github.com/jeffaf/kivv.git
 cd kivv
 
-# Install dependencies with bun
+# Install dependencies with bun (our vibe-coding default)
 bun install
 
 # Environment is already configured in .env (git-ignored)
@@ -67,6 +67,11 @@ kivv/
 - [Implementation Plan](IMPLEMENTATION-PLAN.md) - Chunked development guide
 - [Setup Checklist](SETUP-CHECKLIST.md) - Infrastructure setup
 - [PRD (Full Spec)](https://github.com/jeffaf/kivv) - Complete technical specification
+
+## CI & Automation
+
+- **Tests & Type Checks**: GitHub Actions run `bun run type-check` and `bun test` on pushes and pull requests to keep the vibe coding fast without breaking the build.
+- **Deployments**: Cloudflare Workers deploy pipelines trigger when `mcp-server/` or `automation/` change, using `wrangler` with your configured Cloudflare credentials.
 
 ## Development
 
