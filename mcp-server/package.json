@@ -6,8 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
     "build": "tsc",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

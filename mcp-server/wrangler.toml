@@ -1,6 +1,6 @@
 name = "kivv-mcp"
 main = "src/index.ts"
-compatibility_date = "2024-01-01"
+compatibility_date = "2024-11-30"
 compatibility_flags = ["nodejs_compat"]
 
 # Workers configuration
@@ -10,18 +10,23 @@ workers_dev = true
 [[d1_databases]]
 binding = "DB"
 database_name = "kivv-db"
-database_id = "TO_BE_CONFIGURED"  # Replace with your D1 database ID
+database_id = "1e80f2bf-462d-4d51-8002-a4cf26013933"
 
-# R2 Storage binding
-[[r2_buckets]]
-binding = "PDFS"
-bucket_name = "kivv-papers"
-
-# KV namespace binding
+# KV Namespace binding
 [[kv_namespaces]]
 binding = "CACHE"
-id = "TO_BE_CONFIGURED"  # Replace with your KV namespace ID
+id = "7f6b7437931c4c268c27d01a4169101b"
 
-# Environment variables (secrets should be set via wrangler secret put)
+# R2 Bucket binding
+[[r2_buckets]]
+binding = "PAPERS"
+bucket_name = "kivv-papers"
+
+# Environment variables
 [vars]
-ENVIRONMENT = "production"
+# Non-sensitive variables only
+ENVIRONMENT = "development"
+
+# Secrets (set via: wrangler secret put CLAUDE_API_KEY)
+# CLAUDE_API_KEY (use wrangler secret put)
+# These are set via GitHub secrets in production
