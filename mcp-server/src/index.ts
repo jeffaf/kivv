@@ -4,6 +4,7 @@ import { logger } from 'hono/logger';
 import { Env, User } from '../../shared/types';
 import { createAuthMiddleware } from './auth';
 import { HTTP_OK, HTTP_INTERNAL_ERROR } from '../../shared/constants';
+import { listLibrary } from './tools/list-library';
 
 // Define Hono app context with bindings and variables
 type HonoEnv = {
@@ -77,8 +78,32 @@ app.get('/health', async (c) => {
 // Apply authentication to all /mcp/* routes
 app.use('/mcp/*', createAuthMiddleware());
 
-// MCP routes will be added in CHUNK 5-7
-// Placeholder for now
+// =============================================================================
+// MCP Tool Routes
+// =============================================================================
+
+/**
+ * list_library - Query user's paper library with filters and pagination
+ *
+ * Request body (all optional):
+ * {
+ *   "limit": 20,        // Default: 50, Max: 100
+ *   "offset": 0,        // Default: 0
+ *   "explored": true,   // null = all, true = only explored, false = only unexplored
+ *   "bookmarked": true  // null = all, true = only bookmarked, false = only unbookmarked
+ * }
+ *
+ * Response:
+ * {
+ *   "papers": PaperWithStatus[],
+ *   "total": number,
+ *   "limit": number,
+ *   "offset": number
+ * }
+ */
+app.post('/mcp/tools/list_library', listLibrary);
+
+// MCP status endpoint (for testing auth)
 app.get('/mcp/status', async (c) => {
   const user = c.get('user'); // From auth middleware
   return c.json({
