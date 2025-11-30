@@ -5,6 +5,7 @@ import { Env, User } from '../../shared/types';
 import { createAuthMiddleware } from './auth';
 import { HTTP_OK, HTTP_INTERNAL_ERROR } from '../../shared/constants';
 import { listLibrary } from './tools/list-library';
+import { searchPapers } from './tools/search-papers';
 
 // Define Hono app context with bindings and variables
 type HonoEnv = {
@@ -102,6 +103,29 @@ app.use('/mcp/*', createAuthMiddleware());
  * }
  */
 app.post('/mcp/tools/list_library', listLibrary);
+
+/**
+ * search_papers - Search user's paper library by keywords
+ *
+ * Request body:
+ * {
+ *   "query": "neural networks",  // REQUIRED - search keywords
+ *   "limit": 20,                 // Optional: Default 50, Max 100
+ *   "offset": 0,                 // Optional: Default 0
+ *   "explored": true,            // Optional: Filter by exploration status
+ *   "bookmarked": true           // Optional: Filter by bookmark status
+ * }
+ *
+ * Response:
+ * {
+ *   "papers": PaperWithStatus[],
+ *   "total": number,
+ *   "limit": number,
+ *   "offset": number,
+ *   "query": string
+ * }
+ */
+app.post('/mcp/tools/search_papers', searchPapers);
 
 // MCP status endpoint (for testing auth)
 app.get('/mcp/status', async (c) => {
