@@ -25,12 +25,10 @@ Automated arXiv research paper discovery and AI-powered summarization system wit
 
 ## Quick Start
 
-See [docs/setup.md](docs/setup.md) for detailed setup instructions and environment variables.
-
 ### Prerequisites
 
 - Cloudflare account with Workers, D1, KV, and R2 enabled
-- Anthropic Claude API key
+- Anthropic Claude API key ([console.anthropic.com](https://console.anthropic.com))
 - **Bun 1.1+** (package manager - install from [bun.sh](https://bun.sh))
 - Wrangler CLI (installed automatically via bun)
 
@@ -44,11 +42,66 @@ cd kivv
 # Install dependencies with bun (our vibe-coding default)
 bun install
 
-# Environment is already configured in .env (git-ignored)
-# Infrastructure already set up:
-# - D1 database: kivv-db (1e80f2bf-462d-4d51-8002-a4cf26013933)
-# - KV namespace: KIVV_CACHE (7f6b7437931c4c268c27d01a4169101b)
-# - R2 bucket: kivv-papers
+# Set up environment variables
+cp .env.example .env
+# Edit .env with your API keys and Cloudflare credentials
+```
+
+### Deployment
+
+For complete deployment instructions, see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+
+Quick deployment:
+
+```bash
+# Set secrets for automation worker
+cd automation
+wrangler secret put CLAUDE_API_KEY
+wrangler secret put CRON_SECRET
+
+# Deploy automation worker
+wrangler deploy
+
+# Deploy MCP server
+cd ../mcp-server
+wrangler deploy
+
+# Configure Claude Desktop (see DEPLOYMENT.md for details)
+# Add MCP server URL and API key to Claude Desktop config
+```
+
+### Verification
+
+```bash
+# Test automation worker
+curl https://kivv-automation.<username>.workers.dev/health
+
+# Test MCP server
+curl https://kivv-mcp.<username>.workers.dev/health
+
+# Check database
+wrangler d1 execute kivv-db --command "SELECT COUNT(*) FROM users"
+
+# Or use the automated health check script
+./scripts/health-check.sh
+```
+
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) if you encounter any issues.
+
+### Automated Deployment Script
+
+For one-command deployment:
+
+```bash
+# Run the automated deployment script
+./scripts/deploy.sh
+
+# This will:
+# - Verify prerequisites
+# - Check infrastructure
+# - Configure secrets
+# - Deploy both workers
+# - Provide Claude Desktop config
 ```
 
 ## Project Structure
@@ -68,9 +121,12 @@ kivv/
 
 ## Documentation
 
-- [Implementation Plan](IMPLEMENTATION-PLAN.md) - Chunked development guide
+- [Deployment Guide](DEPLOYMENT.md) - Complete production deployment instructions
+- [Troubleshooting Guide](TROUBLESHOOTING.md) - Common issues and solutions
 - [Setup Checklist](SETUP-CHECKLIST.md) - Infrastructure setup
-- [PRD (Full Spec)](https://github.com/jeffaf/kivv) - Complete technical specification
+- [Implementation Plan](IMPLEMENTATION-PLAN.md) - Chunked development guide
+- [API Documentation](docs/api.md) - API endpoints and usage
+- [PRD (Full Spec)](docs/kivv-prd-final.md) - Complete technical specification
 
 ## CI & Automation
 
