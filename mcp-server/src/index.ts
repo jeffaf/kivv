@@ -6,6 +6,7 @@ import { createAuthMiddleware } from './auth';
 import { HTTP_OK, HTTP_INTERNAL_ERROR } from '../../shared/constants';
 import { listLibrary } from './tools/list-library';
 import { searchPapers } from './tools/search-papers';
+import { markExplored } from './tools/mark-explored';
 
 // Define Hono app context with bindings and variables
 type HonoEnv = {
@@ -126,6 +127,31 @@ app.post('/mcp/tools/list_library', listLibrary);
  * }
  */
 app.post('/mcp/tools/search_papers', searchPapers);
+
+/**
+ * mark_explored - Update paper exploration status
+ *
+ * Request body:
+ * {
+ *   "paper_id": 42,              // REQUIRED - which paper to update
+ *   "explored": true,            // Optional: Mark as explored/unexplored
+ *   "bookmarked": false,         // Optional: Mark as bookmarked/unbookmarked
+ *   "notes": "Great paper!"      // Optional: Add/update/clear notes (null to clear)
+ * }
+ *
+ * Response:
+ * {
+ *   "success": true,
+ *   "paper_id": 42,
+ *   "status": {
+ *     "explored": true,
+ *     "bookmarked": false,
+ *     "notes": "Great paper!",
+ *     "read_at": "2025-11-30T12:34:56.789Z"
+ *   }
+ * }
+ */
+app.post('/mcp/tools/mark_explored', markExplored);
 
 // MCP status endpoint (for testing auth)
 app.get('/mcp/status', async (c) => {
