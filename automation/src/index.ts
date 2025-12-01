@@ -15,6 +15,12 @@ import { SummarizationClient } from '../../shared/summarization';
 import { hashContent, formatDate } from '../../shared/utils';
 
 // =============================================================================
+// Configuration Constants
+// =============================================================================
+
+const BATCH_SIZE = 8; // Papers per run to stay under 30s cron timeout
+
+// =============================================================================
 // Types & Interfaces
 // =============================================================================
 
@@ -27,9 +33,12 @@ interface Checkpoint {
   users_processed: number;         // Count of users completed
   papers_found: number;            // Total papers found from arXiv
   papers_summarized: number;       // Total papers successfully summarized
+  papers_skipped: number;          // Papers that were irrelevant
+  papers_processed_this_run: number; // Track batch progress within current run
   total_cost: number;              // Total AI cost in USD
   errors: string[];                // Array of error messages
   last_user_id?: number;           // Last successfully processed user ID (for resume)
+  last_paper_arxiv_id?: string;    // For resuming within a user's papers
   completed: boolean;              // True when all users processed
 }
 
@@ -39,7 +48,19 @@ interface Checkpoint {
 interface UserProcessingResult {
   papers_found: number;
   papers_summarized: number;
+  papers_skipped: number;
   cost: number;
+  batch_exhausted: boolean;        // True if we hit batch limit
+  last_arxiv_id?: string;          // Last paper arxiv_id processed
+}
+
+/**
+ * Result from running automation
+ */
+interface AutomationResult {
+  batch_complete: boolean;         // True if batch limit reached
+  total_complete: boolean;         // True if all users and papers done
+  checkpoint: Checkpoint;
 }
 
 // =============================================================================
@@ -82,6 +103,22 @@ export default {
       });
     }
 
+    // Status endpoint - check current checkpoint
+    if (url.pathname === '/status') {
+      const today = formatDate(new Date());
+      const checkpointKey = `checkpoint:automation:${today}`;
+      const checkpoint = await loadCheckpoint(env, checkpointKey);
+
+      return new Response(JSON.stringify({
+        status: 'ok',
+        checkpoint: checkpoint || { message: 'No checkpoint for today' },
+        timestamp: new Date().toISOString()
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     // Manual trigger endpoint
     if (url.pathname === '/run' && request.method === 'POST') {
       // Only allow cron or manual trigger with secret
@@ -101,11 +138,22 @@ export default {
 
       try {
         console.log('[MANUAL] Manual automation run triggered');
-        await runAutomation(env);
+        const result = await runAutomation(env);
 
         return new Response(JSON.stringify({
           success: true,
-          message: 'Automation completed successfully',
+          message: result.total_complete ? 'All papers processed for today' : `Batch complete (${BATCH_SIZE} papers)`,
+          batch_complete: result.batch_complete,
+          total_complete: result.total_complete,
+          checkpoint: {
+            users_processed: result.checkpoint.users_processed,
+            papers_found: result.checkpoint.papers_found,
+            papers_summarized: result.checkpoint.papers_summarized,
+            papers_skipped: result.checkpoint.papers_skipped,
+            papers_processed_this_run: result.checkpoint.papers_processed_this_run,
+            total_cost: result.checkpoint.total_cost,
+            completed: result.checkpoint.completed
+          },
           timestamp: new Date().toISOString()
         }), {
           status: 200,
@@ -140,7 +188,7 @@ export default {
  * Main automation workflow with checkpoint support
  * Processes all active users and their topics
  */
-async function runAutomation(env: Env): Promise<void> {
+async function runAutomation(env: Env): Promise<AutomationResult> {
   const today = formatDate(new Date());
   const checkpointKey = `checkpoint:automation:${today}`;
 
@@ -150,15 +198,24 @@ async function runAutomation(env: Env): Promise<void> {
     users_processed: 0,
     papers_found: 0,
     papers_summarized: 0,
+    papers_skipped: 0,
+    papers_processed_this_run: 0,
     total_cost: 0,
     errors: [],
     completed: false
   };
 
+  // Reset papers_processed_this_run for new execution
+  checkpoint.papers_processed_this_run = 0;
+
   // If already completed today, skip
   if (checkpoint.completed) {
     console.log('[AUTOMATION] Already completed for today, skipping');
-    return;
+    return {
+      batch_complete: true,
+      total_complete: true,
+      checkpoint
+    };
   }
 
   // Get all active users
@@ -170,43 +227,73 @@ async function runAutomation(env: Env): Promise<void> {
     console.log('[AUTOMATION] No active users found');
     checkpoint.completed = true;
     await saveCheckpoint(env, checkpointKey, checkpoint);
-    return;
+    return {
+      batch_complete: true,
+      total_complete: true,
+      checkpoint
+    };
   }
 
-  console.log(`[AUTOMATION] Processing ${users.results.length} users`);
+  console.log(`[AUTOMATION] Processing ${users.results.length} users (batch limit: ${BATCH_SIZE} papers)`);
 
   // Initialize clients
   const arxivClient = new ArxivClient();
   const summarizationClient = new SummarizationClient(env.CLAUDE_API_KEY);
 
+  let batchExhausted = false;
+
   // Process each user
   for (const user of users.results) {
-    // Skip if already processed (checkpoint resume)
-    if (checkpoint.last_user_id && user.id <= checkpoint.last_user_id) {
+    // Skip if already processed (checkpoint resume) but not the last user we were working on
+    if (checkpoint.last_user_id && user.id < checkpoint.last_user_id) {
       console.log(`[USER:${user.username}] Already processed, skipping`);
       continue;
     }
 
+    // If resuming from this user, clear the last_paper_arxiv_id for fresh start on next user
+    const resumeFromPaper = (checkpoint.last_user_id === user.id) ? checkpoint.last_paper_arxiv_id : undefined;
+
     try {
       console.log(`[USER:${user.username}] Starting processing...`);
+      if (resumeFromPaper) {
+        console.log(`[USER:${user.username}] Resuming from paper: ${resumeFromPaper}`);
+      }
 
+      const batchRemaining = BATCH_SIZE - checkpoint.papers_processed_this_run;
       const result = await processUser(
         env,
         user,
         arxivClient,
-        summarizationClient
+        summarizationClient,
+        batchRemaining,
+        resumeFromPaper
       );
 
-      // Update checkpoint
-      checkpoint.users_processed++;
+      // Update checkpoint - only increment users_processed if we finished this user completely
+      if (!result.batch_exhausted) {
+        checkpoint.users_processed++;
+        checkpoint.last_paper_arxiv_id = undefined; // Clear paper tracking when user is done
+      } else {
+        checkpoint.last_paper_arxiv_id = result.last_arxiv_id;
+      }
+
       checkpoint.papers_found += result.papers_found;
       checkpoint.papers_summarized += result.papers_summarized;
+      checkpoint.papers_skipped += result.papers_skipped;
+      checkpoint.papers_processed_this_run += (result.papers_summarized + result.papers_skipped);
       checkpoint.total_cost += result.cost;
       checkpoint.last_user_id = user.id;
 
       await saveCheckpoint(env, checkpointKey, checkpoint);
 
-      console.log(`[USER:${user.username}] Completed: ${result.papers_found} found, ${result.papers_summarized} summarized, $${result.cost.toFixed(4)} cost`);
+      console.log(`[USER:${user.username}] Completed: ${result.papers_found} found, ${result.papers_summarized} summarized, ${result.papers_skipped} skipped, $${result.cost.toFixed(4)} cost`);
+
+      // Check if batch is exhausted
+      if (result.batch_exhausted) {
+        console.log(`[BATCH] Batch limit reached (${BATCH_SIZE} papers processed this run)`);
+        batchExhausted = true;
+        break;
+      }
 
       // Check budget circuit breaker
       if (checkpoint.total_cost >= 1.0) {
@@ -221,29 +308,44 @@ async function runAutomation(env: Env): Promise<void> {
       console.error(`[USER:${user.username}] Error:`, error);
       checkpoint.errors.push(`${user.username}: ${errorMsg}`);
       checkpoint.last_user_id = user.id; // Mark as processed even on error
+      checkpoint.last_paper_arxiv_id = undefined; // Clear paper tracking on error
       await saveCheckpoint(env, checkpointKey, checkpoint);
       continue; // Continue with next user
     }
   }
 
-  // Mark as completed
-  checkpoint.completed = true;
-  await saveCheckpoint(env, checkpointKey, checkpoint);
+  // Mark as completed only if we processed all users and didn't hit batch limit
+  if (!batchExhausted) {
+    checkpoint.completed = true;
+    await saveCheckpoint(env, checkpointKey, checkpoint);
+  }
 
   // Final summary
   console.log('[AUTOMATION] ===== SUMMARY =====');
   console.log(`[AUTOMATION] Users processed: ${checkpoint.users_processed}`);
   console.log(`[AUTOMATION] Papers found: ${checkpoint.papers_found}`);
   console.log(`[AUTOMATION] Papers summarized: ${checkpoint.papers_summarized}`);
+  console.log(`[AUTOMATION] Papers skipped: ${checkpoint.papers_skipped}`);
+  console.log(`[AUTOMATION] Papers this run: ${checkpoint.papers_processed_this_run}`);
   console.log(`[AUTOMATION] Total cost: $${checkpoint.total_cost.toFixed(4)}`);
+  console.log(`[AUTOMATION] Batch exhausted: ${batchExhausted}`);
+  console.log(`[AUTOMATION] Completed: ${checkpoint.completed}`);
   console.log(`[AUTOMATION] Errors: ${checkpoint.errors.length}`);
   if (checkpoint.errors.length > 0) {
     console.log('[AUTOMATION] Error details:', checkpoint.errors);
   }
   console.log('[AUTOMATION] ==================');
 
-  // Cleanup old checkpoints
-  await cleanupOldCheckpoints(env);
+  // Cleanup old checkpoints (only if fully completed)
+  if (checkpoint.completed) {
+    await cleanupOldCheckpoints(env);
+  }
+
+  return {
+    batch_complete: batchExhausted || checkpoint.completed,
+    total_complete: checkpoint.completed,
+    checkpoint
+  };
 }
 
 // =============================================================================
@@ -257,7 +359,9 @@ async function processUser(
   env: Env,
   user: User,
   arxivClient: ArxivClient,
-  summarizationClient: SummarizationClient
+  summarizationClient: SummarizationClient,
+  batchRemaining: number,
+  resumeFromPaperId?: string
 ): Promise<UserProcessingResult> {
 
   // Get user's enabled topics
@@ -268,7 +372,13 @@ async function processUser(
 
   if (!topics.results || topics.results.length === 0) {
     console.log(`[USER:${user.username}] No enabled topics configured`);
-    return { papers_found: 0, papers_summarized: 0, cost: 0 };
+    return {
+      papers_found: 0,
+      papers_summarized: 0,
+      papers_skipped: 0,
+      cost: 0,
+      batch_exhausted: false
+    };
   }
 
   console.log(`[USER:${user.username}] Processing ${topics.results.length} topics`);
@@ -302,11 +412,38 @@ async function processUser(
 
   let papersProcessed = 0;
   let papersSummarized = 0;
+  let papersSkipped = 0;
   let totalCost = 0;
+  let shouldSkip = resumeFromPaperId !== undefined;
+  let lastArxivId: string | undefined;
 
   // Process each paper
   for (const paper of papers) {
+    // Skip papers until we find the resume point
+    if (shouldSkip) {
+      if (paper.arxiv_id === resumeFromPaperId) {
+        console.log(`[PAPER:${paper.arxiv_id}] Found resume point, continuing from next paper`);
+        shouldSkip = false;
+      }
+      continue;
+    }
+
+    // Check batch limit BEFORE processing each paper
+    if (papersProcessed >= batchRemaining) {
+      console.log(`[USER:${user.username}] Batch limit reached, stopping at paper ${paper.arxiv_id}`);
+      return {
+        papers_found: papers.length,
+        papers_summarized: papersSummarized,
+        papers_skipped: papersSkipped,
+        cost: totalCost,
+        batch_exhausted: true,
+        last_arxiv_id: lastArxivId
+      };
+    }
+
     try {
+      lastArxivId = paper.arxiv_id;
+
       // Check if paper already exists in database
       const existing = await env.DB
         .prepare('SELECT id FROM papers WHERE arxiv_id = ?')
@@ -334,6 +471,8 @@ async function processUser(
           console.log(`[PAPER:${paper.arxiv_id}] Created user_paper_status entry`);
         }
 
+        // Already existing papers count toward batch limit (they use time)
+        papersProcessed++;
         continue;
       }
 
@@ -342,7 +481,7 @@ async function processUser(
         paper.title,
         paper.abstract,
         topicNames,
-        0.7 // relevance threshold
+        0.5 // relevance threshold (lowered for testing)
       );
 
       totalCost += result.total_cost;
@@ -350,6 +489,8 @@ async function processUser(
       // Skip if irrelevant (failed triage)
       if (!result.summary) {
         console.log(`[PAPER:${paper.arxiv_id}] Skipped (${result.skipped_reason})`);
+        papersSkipped++;
+        papersProcessed++;
         continue;
       }
 
@@ -415,7 +556,10 @@ async function processUser(
   return {
     papers_found: papers.length,
     papers_summarized: papersSummarized,
-    cost: totalCost
+    papers_skipped: papersSkipped,
+    cost: totalCost,
+    batch_exhausted: false,
+    last_arxiv_id: lastArxivId
   };
 }
 

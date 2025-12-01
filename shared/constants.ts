@@ -50,11 +50,11 @@ export const ANTHROPIC_JITTER_MAX_MS = 100;
 // Model Identifiers
 // =============================================================================
 
-/** Claude 3.5 Haiku model identifier (for triage) */
+/** Claude Haiku model identifier (for triage) - using 3.5 as 4.5 may not be available */
 export const CLAUDE_HAIKU_MODEL = 'claude-3-5-haiku-20241022';
 
-/** Claude 3.5 Sonnet model identifier (for summaries) */
-export const CLAUDE_SONNET_MODEL = 'claude-3-5-sonnet-20241022';
+/** Claude Sonnet model identifier (for summaries) - using Claude 4 Sonnet */
+export const CLAUDE_SONNET_MODEL = 'claude-sonnet-4-20250514';
 
 // =============================================================================
 // Token Limits

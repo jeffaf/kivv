@@ -156,13 +156,31 @@ export class SummarizationClient {
     await this.enforceRateLimit();
 
     const topicList = userTopics.join(', ');
-    const prompt = `Rate the relevance of this research paper to these topics: ${topicList}
+
+    // Security-focused prompt for offensive security researcher
+    const prompt = `You are evaluating research papers for an offensive security researcher and penetration tester.
+
+USER INTERESTS: ${topicList}
+
+SCORING CRITERIA (for offensive security relevance):
+- 0.9-1.0: Novel attack/exploit technique, directly weaponizable, reveals new vulnerability class
+- 0.7-0.9: Security-relevant technique, adversarial ML, practical offensive application
+- 0.5-0.7: Indirectly applicable (ML/AI techniques usable for security, defensive paper with offensive insights)
+- 0.3-0.5: Tangentially related (mentions security but not primary focus)
+- 0.0-0.3: Irrelevant to security research
+
+Consider:
+1. Can techniques be weaponized or applied to offensive security?
+2. Does it reveal new attack surfaces or vulnerability patterns?
+3. Are there evasion/obfuscation techniques to learn from?
+4. Could this improve red team operations or penetration testing?
+5. Does it advance adversarial ML, malware analysis, or exploit development?
 
 Paper Title: ${title}
 
 Abstract: ${abstract}
 
-Return ONLY a number between 0.0 (completely irrelevant) and 1.0 (highly relevant). Do not include any explanation.`;
+Return ONLY a number between 0.0 and 1.0. No explanation.`;
 
     const response = await this.callClaude(
       CLAUDE_HAIKU_MODEL,
