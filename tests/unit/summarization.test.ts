@@ -5,7 +5,8 @@
 // Covers: rate limiting, triage, summaries, cost tracking, error handling
 // =============================================================================
 
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+const mock = vi.fn;
 import { SummarizationClient } from '../../shared/summarization';
 import {
   ANTHROPIC_RATE_LIMIT_MS,

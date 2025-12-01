@@ -4,6 +4,10 @@ import { join } from 'path';
 
 export default defineWorkersConfig({
   test: {
+    // Global test timeout - prevent hanging tests in CI
+    testTimeout: 30000, // 30 seconds per test
+    hookTimeout: 30000, // 30 seconds for beforeAll/afterAll hooks
+    teardownTimeout: 10000, // 10 seconds for cleanup
     poolOptions: {
       workers: {
         wrangler: {

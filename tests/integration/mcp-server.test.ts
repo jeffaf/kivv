@@ -1,23 +1,53 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { unstable_dev } from 'wrangler';
-import type { UnstableDevWorker } from 'wrangler';
+import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { env } from 'cloudflare:test';
+import app from '../../mcp-server/src/index';
+
+// Test API key from database seed
+const TEST_API_KEY = 'c3c74bbeba60635cf12a6b27e766c8b953fcd70ac4e4347f05d8bc68902d2f1d';
+
+// Database setup helpers
+async function initializeSchema() {
+  await env.DB.batch([
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        api_key TEXT UNIQUE NOT NULL,
+        display_name TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        last_login TEXT,
+        is_active BOOLEAN DEFAULT 1
+      )
+    `),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_users_api_key ON users(api_key)`),
+  ]);
+}
+
+async function seedTestDatabase() {
+  // Clean database first
+  await env.DB.prepare('DELETE FROM users').run();
+
+  // Create test user with known API key
+  await env.DB.prepare(`
+    INSERT INTO users (id, username, email, api_key, is_active)
+    VALUES (1, 'testuser', 'test@example.com', ?, 1)
+  `).bind(TEST_API_KEY).run();
+}
 
 describe('MCP Server Integration Tests', () => {
-  let worker: UnstableDevWorker;
-
   beforeAll(async () => {
-    worker = await unstable_dev('mcp-server/src/index.ts', {
-      experimental: { disableExperimentalWarning: true },
-    });
+    await initializeSchema();
   });
 
-  afterAll(async () => {
-    await worker.stop();
+  beforeEach(async () => {
+    await seedTestDatabase();
   });
 
   describe('Health Check', () => {
     it('should return healthy status', async () => {
-      const resp = await worker.fetch('https://test.com/health');
+      const req = new Request('https://test.com/health');
+      const resp = await app.fetch(req, env);
       expect(resp.status).toBe(200);
 
       const data = await resp.json();
@@ -27,7 +57,8 @@ describe('MCP Server Integration Tests', () => {
     });
 
     it('should include timestamp in health check', async () => {
-      const resp = await worker.fetch('https://test.com/health');
+      const req = new Request('https://test.com/health');
+      const resp = await app.fetch(req, env);
       const data = await resp.json();
 
       expect(data.timestamp).toBeDefined();
@@ -35,7 +66,8 @@ describe('MCP Server Integration Tests', () => {
     });
 
     it('should include version number', async () => {
-      const resp = await worker.fetch('https://test.com/health');
+      const req = new Request('https://test.com/health');
+      const resp = await app.fetch(req, env);
       const data = await resp.json();
 
       expect(data.version).toBe('1.0.0');
@@ -43,14 +75,16 @@ describe('MCP Server Integration Tests', () => {
 
     it('should not require authentication', async () => {
       // No x-api-key header
-      const resp = await worker.fetch('https://test.com/health');
+      const req = new Request('https://test.com/health');
+      const resp = await app.fetch(req, env);
       expect(resp.status).toBe(200);
     });
   });
 
   describe('MCP Status Endpoint', () => {
     it('should require authentication', async () => {
-      const resp = await worker.fetch('https://test.com/mcp/status');
+      const req = new Request('https://test.com/mcp/status');
+      const resp = await app.fetch(req, env);
       expect(resp.status).toBe(401);
 
       const data = await resp.json();
@@ -58,11 +92,12 @@ describe('MCP Server Integration Tests', () => {
     });
 
     it('should reject invalid API key', async () => {
-      const resp = await worker.fetch('https://test.com/mcp/status', {
+      const req = new Request('https://test.com/mcp/status', {
         headers: {
           'x-api-key': 'invalid-key-12345',
         },
       });
+      const resp = await app.fetch(req, env);
 
       expect(resp.status).toBe(401);
       const data = await resp.json();
@@ -70,50 +105,45 @@ describe('MCP Server Integration Tests', () => {
     });
 
     it('should return status with valid API key', async () => {
-      // This test requires database to be seeded with test user
-      // API key from CHUNK 3: c3c74bbeba60635cf12a6b27e766c8b953fcd70ac4e4347f05d8bc68902d2f1d
-
-      const resp = await worker.fetch('https://test.com/mcp/status', {
+      const req = new Request('https://test.com/mcp/status', {
         headers: {
-          'x-api-key': 'c3c74bbeba60635cf12a6b27e766c8b953fcd70ac4e4347f05d8bc68902d2f1d',
+          'x-api-key': TEST_API_KEY,
         },
       });
+      const resp = await app.fetch(req, env);
 
-      // This might be 401 if database isn't seeded - that's expected
-      // In production with seeded DB, this should be 200
-      if (resp.status === 200) {
-        const data = await resp.json();
-        expect(data.authenticated).toBe(true);
-        expect(data.user.username).toBeDefined();
-        expect(data.message).toBe('MCP server is running');
-      } else {
-        // Database not seeded - expected in fresh test environment
-        expect(resp.status).toBe(401);
-      }
+      expect(resp.status).toBe(200);
+      const data = await resp.json();
+      expect(data.authenticated).toBe(true);
+      expect(data.user.username).toBe('testuser');
+      expect(data.message).toBe('MCP server is running');
     });
   });
 
   describe('CORS Headers', () => {
     it('should include CORS headers', async () => {
-      const resp = await worker.fetch('https://test.com/health');
+      const req = new Request('https://test.com/health');
+      const resp = await app.fetch(req, env);
 
       expect(resp.headers.get('access-control-allow-origin')).toBe('*');
     });
 
     it('should handle OPTIONS preflight', async () => {
-      const resp = await worker.fetch('https://test.com/health', {
+      const req = new Request('https://test.com/health', {
         method: 'OPTIONS',
       });
+      const resp = await app.fetch(req, env);
 
-      expect(resp.status).toBe(200);
+      expect(resp.status).toBe(204); // No Content - standard CORS preflight response
       expect(resp.headers.get('access-control-allow-methods')).toContain('GET');
       expect(resp.headers.get('access-control-allow-methods')).toContain('POST');
     });
 
     it('should allow x-api-key header', async () => {
-      const resp = await worker.fetch('https://test.com/health', {
+      const req = new Request('https://test.com/health', {
         method: 'OPTIONS',
       });
+      const resp = await app.fetch(req, env);
 
       const allowedHeaders = resp.headers.get('access-control-allow-headers');
       expect(allowedHeaders).toContain('x-api-key');
@@ -121,7 +151,8 @@ describe('MCP Server Integration Tests', () => {
     });
 
     it('should set credentials flag', async () => {
-      const resp = await worker.fetch('https://test.com/health');
+      const req = new Request('https://test.com/health');
+      const resp = await app.fetch(req, env);
 
       expect(resp.headers.get('access-control-allow-credentials')).toBe('true');
     });
@@ -129,7 +160,8 @@ describe('MCP Server Integration Tests', () => {
 
   describe('404 Handler', () => {
     it('should return 404 for unknown routes', async () => {
-      const resp = await worker.fetch('https://test.com/nonexistent');
+      const req = new Request('https://test.com/nonexistent');
+      const resp = await app.fetch(req, env);
       expect(resp.status).toBe(404);
 
       const data = await resp.json();
@@ -138,18 +170,19 @@ describe('MCP Server Integration Tests', () => {
     });
 
     it('should return 404 for unknown MCP routes', async () => {
-      const resp = await worker.fetch('https://test.com/mcp/invalid', {
+      const req = new Request('https://test.com/mcp/invalid', {
         headers: {
-          'x-api-key': 'c3c74bbeba60635cf12a6b27e766c8b953fcd70ac4e4347f05d8bc68902d2f1d',
+          'x-api-key': TEST_API_KEY,
         },
       });
+      const resp = await app.fetch(req, env);
 
-      // Will be 404 or 401 depending on database state
-      expect([404, 401]).toContain(resp.status);
+      expect(resp.status).toBe(404);
     });
 
     it('should include error details in 404 response', async () => {
-      const resp = await worker.fetch('https://test.com/does/not/exist');
+      const req = new Request('https://test.com/does/not/exist');
+      const resp = await app.fetch(req, env);
       expect(resp.status).toBe(404);
 
       const data = await resp.json();
@@ -162,14 +195,16 @@ describe('MCP Server Integration Tests', () => {
   describe('Error Handling', () => {
     it('should not expose internal errors to client', async () => {
       // Health check should handle database errors gracefully
-      const resp = await worker.fetch('https://test.com/health');
+      const req = new Request('https://test.com/health');
+      const resp = await app.fetch(req, env);
 
       // Should either be healthy (200) or unhealthy (503), never 500
       expect([200, 503]).toContain(resp.status);
     });
 
     it('should include timestamp in error responses', async () => {
-      const resp = await worker.fetch('https://test.com/nonexistent');
+      const req = new Request('https://test.com/nonexistent');
+      const resp = await app.fetch(req, env);
       expect(resp.status).toBe(404);
 
       // Error response should be JSON
@@ -183,7 +218,8 @@ describe('MCP Server Integration Tests', () => {
       // This test verifies the logger middleware is active
       // In production, logs go to Cloudflare dashboard
 
-      const resp = await worker.fetch('https://test.com/health');
+      const req = new Request('https://test.com/health');
+      const resp = await app.fetch(req, env);
       expect(resp.status).toBe(200);
 
       // Logging is working if we get a response
@@ -194,37 +230,40 @@ describe('MCP Server Integration Tests', () => {
   describe('Authentication Middleware', () => {
     it('should protect all /mcp/* routes', async () => {
       // No API key
-      const resp = await worker.fetch('https://test.com/mcp/status');
+      const req = new Request('https://test.com/mcp/status');
+      const resp = await app.fetch(req, env);
       expect(resp.status).toBe(401);
     });
 
     it('should allow authenticated access to /mcp/* routes', async () => {
-      const resp = await worker.fetch('https://test.com/mcp/status', {
+      const req = new Request('https://test.com/mcp/status', {
         headers: {
-          'x-api-key': 'c3c74bbeba60635cf12a6b27e766c8b953fcd70ac4e4347f05d8bc68902d2f1d',
+          'x-api-key': TEST_API_KEY,
         },
       });
+      const resp = await app.fetch(req, env);
 
-      // 200 if database seeded, 401 if not
-      expect([200, 401]).toContain(resp.status);
+      expect(resp.status).toBe(200);
     });
 
     it('should reject empty API key', async () => {
-      const resp = await worker.fetch('https://test.com/mcp/status', {
+      const req = new Request('https://test.com/mcp/status', {
         headers: {
           'x-api-key': '',
         },
       });
+      const resp = await app.fetch(req, env);
 
       expect(resp.status).toBe(401);
     });
 
     it('should reject whitespace-only API key', async () => {
-      const resp = await worker.fetch('https://test.com/mcp/status', {
+      const req = new Request('https://test.com/mcp/status', {
         headers: {
           'x-api-key': '   ',
         },
       });
+      const resp = await app.fetch(req, env);
 
       expect(resp.status).toBe(401);
     });

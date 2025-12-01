@@ -5,7 +5,8 @@
 // Note: These tests use mocks to avoid real API calls
 // =============================================================================
 
-import { describe, test, expect, beforeEach, mock } from 'bun:test';
+import { describe, it as test, expect, beforeEach, vi } from 'vitest';
+const mock = vi.fn;
 
 // =============================================================================
 // Test Configuration
