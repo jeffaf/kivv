@@ -8,6 +8,7 @@ import { listLibrary } from './tools/list-library';
 import { searchPapers } from './tools/search-papers';
 import { markExplored } from './tools/mark-explored';
 import { getUserRSSFeed, getUserAtomFeed } from './feeds/user-feed';
+import { handleJsonRpc } from './jsonrpc';
 
 // Define Hono app context with bindings and variables
 type HonoEnv = {
@@ -94,11 +95,44 @@ app.get('/feeds/:username/rss.xml', getUserRSSFeed);
  */
 app.get('/feeds/:username/atom.xml', getUserAtomFeed);
 
-// Apply authentication to all /mcp/* routes
+// Apply authentication to all /mcp routes (exact and nested paths)
+app.use('/mcp', createAuthMiddleware());
 app.use('/mcp/*', createAuthMiddleware());
 
 // =============================================================================
-// MCP Tool Routes
+// MCP JSON-RPC Protocol Endpoint
+// =============================================================================
+// This endpoint implements the MCP JSON-RPC protocol for standard MCP clients
+// like npx mcp-remote. Supports: initialize, tools/list, tools/call methods
+// =============================================================================
+
+/**
+ * MCP JSON-RPC endpoint - Standard MCP protocol handler
+ *
+ * Supports JSON-RPC 2.0 with MCP methods:
+ * - initialize: Returns server capabilities and protocol version
+ * - tools/list: Returns available tool definitions with JSON Schema
+ * - tools/call: Executes a tool with given arguments
+ *
+ * Request format:
+ * {
+ *   "jsonrpc": "2.0",
+ *   "method": "tools/call",
+ *   "params": { "name": "list_library", "arguments": { "limit": 20 } },
+ *   "id": 1
+ * }
+ *
+ * Response format:
+ * {
+ *   "jsonrpc": "2.0",
+ *   "result": { "content": [{ "type": "text", "text": "..." }] },
+ *   "id": 1
+ * }
+ */
+app.post('/mcp', handleJsonRpc);
+
+// =============================================================================
+// MCP Tool Routes (REST-style for Claude Desktop direct config)
 // =============================================================================
 
 /**

@@ -208,3 +208,108 @@ export interface ApiError {
   code: string;
   details?: Record<string, unknown>;
 }
+
+// =============================================================================
+// MCP JSON-RPC Protocol Types
+// =============================================================================
+
+/**
+ * JSON-RPC 2.0 request format
+ */
+export interface JsonRpcRequest {
+  jsonrpc: '2.0';
+  method: string;
+  params?: Record<string, unknown>;
+  id: string | number | null;
+}
+
+/**
+ * JSON-RPC 2.0 success response
+ */
+export interface JsonRpcSuccessResponse {
+  jsonrpc: '2.0';
+  result: unknown;
+  id: string | number | null;
+}
+
+/**
+ * JSON-RPC 2.0 error response
+ */
+export interface JsonRpcErrorResponse {
+  jsonrpc: '2.0';
+  error: {
+    code: number;
+    message: string;
+    data?: unknown;
+  };
+  id: string | number | null;
+}
+
+/**
+ * JSON-RPC standard error codes
+ */
+export const JsonRpcErrorCodes = {
+  PARSE_ERROR: -32700,
+  INVALID_REQUEST: -32600,
+  METHOD_NOT_FOUND: -32601,
+  INVALID_PARAMS: -32602,
+  INTERNAL_ERROR: -32603,
+} as const;
+
+/**
+ * MCP initialize response
+ */
+export interface McpInitializeResult {
+  protocolVersion: string;
+  capabilities: {
+    tools?: Record<string, unknown>;
+  };
+  serverInfo: {
+    name: string;
+    version: string;
+  };
+}
+
+/**
+ * MCP tool definition with JSON Schema
+ */
+export interface McpToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: {
+    type: 'object';
+    properties: Record<string, unknown>;
+    required?: string[];
+  };
+}
+
+/**
+ * MCP tools/list response
+ */
+export interface McpToolsListResult {
+  tools: McpToolDefinition[];
+}
+
+/**
+ * MCP tools/call request params
+ */
+export interface McpToolsCallParams {
+  name: string;
+  arguments?: Record<string, unknown>;
+}
+
+/**
+ * MCP content block (text type)
+ */
+export interface McpTextContent {
+  type: 'text';
+  text: string;
+}
+
+/**
+ * MCP tools/call response
+ */
+export interface McpToolsCallResult {
+  content: McpTextContent[];
+  isError?: boolean;
+}
