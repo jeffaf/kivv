@@ -628,8 +628,3 @@ cat automation/wrangler.toml >> config-$(date +%Y%m%d).txt
 
 ---
 
-**Need more help?** Contact jeffbarron@protonmail.com with:
-- System state output
-- Recent logs
-- Error messages
-- Steps to reproduce
