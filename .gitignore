@@ -68,3 +68,9 @@ tmp/
 # Chunk verification files (may contain API keys)
 CHUNK*.md
 .checkpoint/
+
+# Personal files (created during setup, not for repo)
+*api-key.txt
+*API-KEY.txt
+*secret*.txt
+test-output/
