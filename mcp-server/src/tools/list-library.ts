@@ -81,26 +81,30 @@ export async function listLibrary(c: Context) {
     );
   }
 
-  // Build WHERE clause with user isolation
-  const filters: string[] = ['ups.user_id = ?'];
-  const bindings: (number | boolean)[] = [user.id];
+  // Build optional filters for explored/bookmarked
+  const optionalFilters: string[] = [];
+  const optionalBindings: (number | boolean)[] = [];
 
   // Add optional explored filter
   if (body.explored !== undefined && body.explored !== null) {
-    filters.push('ups.explored = ?');
-    bindings.push(body.explored ? 1 : 0);
+    optionalFilters.push('ups.explored = ?');
+    optionalBindings.push(body.explored ? 1 : 0);
   }
 
   // Add optional bookmarked filter
   if (body.bookmarked !== undefined && body.bookmarked !== null) {
-    filters.push('ups.bookmarked = ?');
-    bindings.push(body.bookmarked ? 1 : 0);
+    optionalFilters.push('ups.bookmarked = ?');
+    optionalBindings.push(body.bookmarked ? 1 : 0);
   }
 
-  const whereClause = filters.join(' AND ');
+  const optionalClause = optionalFilters.length > 0
+    ? ' AND ' + optionalFilters.join(' AND ')
+    : '';
 
-  // Execute main query with JOIN
+  // Execute main query with LEFT JOIN
   // SECURITY: All queries filter by user_id to prevent cross-user access
+  // LEFT JOIN ensures papers are visible even if user_paper_status creation failed
+  // Shows papers where: user has status entry OR paper was collected for this user
   const query = `
     SELECT
       p.id,
@@ -119,37 +123,38 @@ export async function listLibrary(c: Context) {
       p.content_hash,
       p.collected_for_user_id,
       p.created_at,
-      ups.explored,
-      ups.bookmarked,
+      COALESCE(ups.explored, 0) as explored,
+      COALESCE(ups.bookmarked, 0) as bookmarked,
       ups.notes,
       ups.read_at
     FROM papers p
-    INNER JOIN user_paper_status ups ON p.id = ups.paper_id
-    WHERE ${whereClause}
+    LEFT JOIN user_paper_status ups ON p.id = ups.paper_id AND ups.user_id = ?
+    WHERE (ups.user_id = ? OR p.collected_for_user_id = ?)${optionalClause}
     ORDER BY p.published_date DESC
     LIMIT ? OFFSET ?
   `;
 
   try {
-    // Add pagination parameters to bindings
-    const queryBindings = [...bindings, limit, offset];
+    // Build bindings: user_id for JOIN, user_id twice for WHERE, optional filters, pagination
+    const queryBindings = [user.id, user.id, user.id, ...optionalBindings, limit, offset];
 
     const result = await c.env.DB
       .prepare(query)
       .bind(...queryBindings)
       .all<PaperWithStatus>();
 
-    // Get total count for pagination metadata
+    // Get total count for pagination metadata (same LEFT JOIN logic)
     const countQuery = `
       SELECT COUNT(*) as total
       FROM papers p
-      INNER JOIN user_paper_status ups ON p.id = ups.paper_id
-      WHERE ${whereClause}
+      LEFT JOIN user_paper_status ups ON p.id = ups.paper_id AND ups.user_id = ?
+      WHERE (ups.user_id = ? OR p.collected_for_user_id = ?)${optionalClause}
     `;
 
+    const countBindings = [user.id, user.id, user.id, ...optionalBindings];
     const countResult = await c.env.DB
       .prepare(countQuery)
-      .bind(...bindings)
+      .bind(...countBindings)
       .first<{ total: number }>();
 
     const total = countResult?.total ?? 0;

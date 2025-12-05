@@ -53,7 +53,6 @@ export interface Paper {
   abstract: string;
   categories: string; // JSON array as string
   published_date: string;
-  arxiv_url: string; // arXiv abstract page URL
   pdf_url: string;
   r2_key: string | null;
   summary: string | null;

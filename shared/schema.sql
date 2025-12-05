@@ -127,12 +127,15 @@ INSERT OR IGNORE INTO users (username, email, api_key, display_name, is_active) 
   ('jeff', 'jeffbarron@protonmail.com', 'c3c74bbeba60635cf12a6b27e766c8b953fcd70ac4e4347f05d8bc68902d2f1d', 'Jeff', 1),
   ('wife', 'wife@example.com', 'e98699bedad9746e231843b96150c0638b7cceb717c44d5f9010a272a5b8de5b', 'Wife', 1);
 
--- Sample topics for Jeff (user_id = 1)
--- Note: Customize these based on actual research interests
+-- Security-focused topics for Jeff (user_id = 1)
+-- Tuned for offensive security researcher / pentester interests
 INSERT OR IGNORE INTO topics (user_id, topic_name, arxiv_query, enabled) VALUES
-  (1, 'Machine Learning Theory', 'cat:cs.LG AND (theory OR theoretical)', 1),
-  (1, 'AI Safety & Alignment', 'cat:cs.AI AND (safety OR alignment OR interpretability)', 1),
-  (1, 'Large Language Models', 'cat:cs.CL AND (large language model OR LLM OR transformer)', 1);
+  (1, 'Cybersecurity & CTF', 'cat:cs.CR AND (CTF OR capture the flag OR exploit OR vulnerability OR penetration OR red team)', 1),
+  (1, 'AI Security Agents', 'cat:cs.CR AND (AI OR machine learning OR LLM OR agent OR automated)', 1),
+  (1, 'Adversarial ML & Attacks', 'cat:cs.LG AND (adversarial OR attack OR evasion OR robust OR security)', 1),
+  (1, 'LLM Security & Jailbreaks', 'cat:cs.CL AND (jailbreak OR prompt injection OR security OR adversarial OR attack)', 1),
+  (1, 'Malware & Reverse Engineering', 'cat:cs.CR AND (malware OR reverse engineering OR binary OR obfuscation)', 1),
+  (1, 'Network Security', 'cat:cs.CR AND (network OR intrusion OR detection OR traffic OR protocol)', 1);
 
 -- Sample topics for Wife (user_id = 2)
 -- Note: Customize these based on actual research interests

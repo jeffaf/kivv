@@ -13,6 +13,7 @@ import { Env, User, Topic, Paper } from '../../shared/types';
 import { ArxivClient, ArxivQueryBuilder } from '../../shared/arxiv-client';
 import { SummarizationClient } from '../../shared/summarization';
 import { hashContent, formatDate } from '../../shared/utils';
+import { CLAUDE_SONNET_MODEL } from '../../shared/constants';
 
 // =============================================================================
 // Configuration Constants
@@ -513,7 +514,7 @@ async function processUser(
           paper.pdf_url,
           result.summary,
           new Date().toISOString(),
-          'claude-3-5-sonnet-20241022',
+          CLAUDE_SONNET_MODEL,
           result.relevance_score,
           result.content_hash,
           user.id,
