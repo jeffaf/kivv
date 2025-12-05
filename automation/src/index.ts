@@ -267,6 +267,7 @@ async function runAutomation(env: Env): Promise<AutomationResult> {
         arxivClient,
         summarizationClient,
         batchRemaining,
+        checkpoint, // Pass checkpoint for budget checking
         resumeFromPaper
       );
 
@@ -367,6 +368,7 @@ async function processUser(
   arxivClient: ArxivClient,
   summarizationClient: SummarizationClient,
   batchRemaining: number,
+  checkpoint: Checkpoint,
   resumeFromPaperId?: string
 ): Promise<UserProcessingResult> {
 
@@ -470,23 +472,17 @@ async function processUser(
       if (existing) {
         console.log(`[PAPER:${paper.arxiv_id}] Already exists in database, skipping`);
 
-        // Create user_paper_status entry if it doesn't exist
-        const userStatus = await env.DB
-          .prepare('SELECT 1 FROM user_paper_status WHERE user_id = ? AND paper_id = ?')
-          .bind(user.id, existing.id)
-          .first();
+        // Single INSERT OR IGNORE instead of SELECT + conditional INSERT
+        await env.DB
+          .prepare(`
+            INSERT OR IGNORE INTO user_paper_status
+            (user_id, paper_id, explored, bookmarked, created_at)
+            VALUES (?, ?, 0, 0, ?)
+          `)
+          .bind(user.id, existing.id, new Date().toISOString())
+          .run();
 
-        if (!userStatus) {
-          await env.DB
-            .prepare(`
-              INSERT INTO user_paper_status
-              (user_id, paper_id, explored, bookmarked, created_at)
-              VALUES (?, ?, 0, 0, ?)
-            `)
-            .bind(user.id, existing.id, new Date().toISOString())
-            .run();
-          console.log(`[PAPER:${paper.arxiv_id}] Created user_paper_status entry`);
-        }
+        console.log(`[PAPER:${paper.arxiv_id}] Ensured user_paper_status entry exists`);
 
         // Already existing papers count toward batch limit (they use time)
         papersProcessed++;
@@ -494,11 +490,13 @@ async function processUser(
       }
 
       // Summarize paper using two-stage AI
+      // Pass checkpoint.total_cost to prevent budget bypass from new instances
       const result = await summarizationClient.summarize(
         paper.title,
         paper.abstract,
         topicNames,
-        0.5 // relevance threshold (lowered for testing)
+        0.5, // relevance threshold (lowered for testing)
+        checkpoint.total_cost // Pass running total from checkpoint
       );
 
       totalCost += result.total_cost;

@@ -268,16 +268,19 @@ Provide ONLY the 3-sentence summary, nothing else.`;
    * @param abstract - Paper abstract
    * @param userTopics - User's research topics
    * @param relevanceThreshold - Minimum score for Sonnet (default: 0.7)
+   * @param currentTotalCost - Running total cost from checkpoint (default: 0)
    * @returns Summarization result with summary, score, costs
    */
   async summarize(
     title: string,
     abstract: string,
     userTopics: string[],
-    relevanceThreshold = DEFAULT_RELEVANCE_THRESHOLD
+    relevanceThreshold = DEFAULT_RELEVANCE_THRESHOLD,
+    currentTotalCost = 0
   ): Promise<SummarizationResult> {
-    // Check budget circuit breaker
-    if (this.totalCost >= DAILY_BUDGET_CAP_USD) {
+    // Check budget circuit breaker against checkpoint total, not instance total
+    // This prevents bypass from creating new instances each automation run
+    if (currentTotalCost >= DAILY_BUDGET_CAP_USD) {
       return {
         summary: null,
         relevance_score: 0,
