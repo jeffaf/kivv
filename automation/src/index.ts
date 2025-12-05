@@ -389,6 +389,9 @@ async function processUser(
 
   console.log(`[USER:${user.username}] Processing ${topics.results.length} topics`);
 
+  // Collect topic names for relevance scoring
+  const topicNames = topics.results.map(t => t.topic_name);
+
   // Query each topic individually to avoid arXiv API errors from overly complex queries
   // Then deduplicate papers by arxiv_id
   const paperMap = new Map<string, { arxiv_id: string; title: string; authors: string; abstract: string; categories: string; published_date: string; pdf_url: string }>();
