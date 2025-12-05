@@ -337,8 +337,8 @@ async function runAutomation(env: Env): Promise<AutomationResult> {
   }
   console.log('[AUTOMATION] ==================');
 
-  // Send notification if papers were found
-  if (checkpoint.papers_summarized > 0) {
+  // Send notification only when daily run completes (not per batch)
+  if (checkpoint.completed && checkpoint.papers_summarized > 0) {
     await sendNotification(env, checkpoint);
   }
 
