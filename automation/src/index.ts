@@ -622,7 +622,7 @@ async function cleanupOldCheckpoints(env: Env): Promise<void> {
  * Send notification via ntfy.sh when new papers are found
  * Simple HTTP POST - no auth required, just pick a topic name
  *
- * @param env - Environment with NTFY_TOPIC
+ * @param env - Environment with NTFY_TOPIC and DB
  * @param checkpoint - Current checkpoint with paper counts
  */
 async function sendNotification(env: Env, checkpoint: Checkpoint): Promise<void> {
@@ -633,12 +633,39 @@ async function sendNotification(env: Env, checkpoint: Checkpoint): Promise<void>
   }
 
   try {
+    // Fetch today's summarized paper titles from database
+    const today = checkpoint.date;
+    const papers = await env.DB
+      .prepare(`
+        SELECT title FROM papers
+        WHERE summary IS NOT NULL
+        AND DATE(created_at) = ?
+        ORDER BY relevance_score DESC
+        LIMIT 5
+      `)
+      .bind(today)
+      .all<{ title: string }>();
+
     const title = `📄 ${checkpoint.papers_summarized} new paper${checkpoint.papers_summarized === 1 ? '' : 's'}`;
-    const body = [
-      `Found ${checkpoint.papers_found} papers, ${checkpoint.papers_summarized} relevant`,
-      `Cost: $${checkpoint.total_cost.toFixed(4)}`,
-      checkpoint.completed ? '✅ Daily run complete' : '⏳ Batch complete, more pending',
-    ].join('\n');
+
+    // Build body with paper titles (truncated to fit 4KB limit)
+    const bodyParts = [
+      `Found ${checkpoint.papers_found} papers, ${checkpoint.papers_summarized} passed relevance filter`,
+      '',
+    ];
+
+    if (papers.results.length > 0) {
+      for (const paper of papers.results) {
+        // Truncate long titles to ~80 chars
+        const truncatedTitle = paper.title.length > 80
+          ? paper.title.substring(0, 77) + '...'
+          : paper.title;
+        bodyParts.push(`• ${truncatedTitle}`);
+      }
+      if (checkpoint.papers_summarized > 5) {
+        bodyParts.push(`...and ${checkpoint.papers_summarized - 5} more`);
+      }
+    }
 
     const response = await fetch(`https://ntfy.sh/${topic}`, {
       method: 'POST',
@@ -647,7 +674,7 @@ async function sendNotification(env: Env, checkpoint: Checkpoint): Promise<void>
         'Priority': checkpoint.papers_summarized >= 5 ? 'high' : 'default',
         'Tags': 'page_facing_up,mag',
       },
-      body: body,
+      body: bodyParts.join('\n'),
     });
 
     if (response.ok) {
