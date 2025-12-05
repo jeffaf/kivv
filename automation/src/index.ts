@@ -389,32 +389,40 @@ async function processUser(
 
   console.log(`[USER:${user.username}] Processing ${topics.results.length} topics`);
 
-  // Build combined search query (OR all topics)
-  const queryBuilder = new ArxivQueryBuilder();
-  const topicNames: string[] = [];
+  // Query each topic individually to avoid arXiv API errors from overly complex queries
+  // Then deduplicate papers by arxiv_id
+  const paperMap = new Map<string, { arxiv_id: string; title: string; authors: string; abstract: string; categories: string; published_date: string; pdf_url: string }>();
 
   for (const topic of topics.results) {
-    // Parse the arxiv_query to extract search terms
-    // For now, we'll use the arxiv_query directly as it's already formatted
-    topicNames.push(topic.topic_name);
+    try {
+      console.log(`[USER:${user.username}] Querying topic: ${topic.topic_name}`);
+
+      const topicPapers = await arxivClient.search({
+        query: topic.arxiv_query,
+        maxResults: 50, // Limit per topic to avoid rate limiting
+        sortBy: 'submittedDate',
+        sortOrder: 'descending'
+      });
+
+      console.log(`[USER:${user.username}] Topic "${topic.topic_name}" returned ${topicPapers.length} papers`);
+
+      // Add to map (deduplicates automatically)
+      for (const paper of topicPapers) {
+        if (!paperMap.has(paper.arxiv_id)) {
+          paperMap.set(paper.arxiv_id, paper);
+        }
+      }
+    } catch (error) {
+      console.error(`[USER:${user.username}] Error querying topic "${topic.topic_name}":`, error);
+      // Continue with other topics even if one fails
+    }
   }
 
-  // Combine all topic queries with OR
-  const combinedQuery = topics.results
-    .map(t => `(${t.arxiv_query})`)
-    .join(' OR ');
+  // Convert map to array, sorted by most recent first
+  const papers = Array.from(paperMap.values())
+    .sort((a, b) => new Date(b.published_date).getTime() - new Date(a.published_date).getTime());
 
-  console.log(`[USER:${user.username}] Search query: ${combinedQuery}`);
-
-  // Search arXiv for papers from last 24 hours
-  const papers = await arxivClient.search({
-    query: combinedQuery,
-    maxResults: 100, // Process up to 100 papers per user per day
-    sortBy: 'submittedDate',
-    sortOrder: 'descending'
-  });
-
-  console.log(`[USER:${user.username}] Found ${papers.length} papers from arXiv`);
+  console.log(`[USER:${user.username}] Found ${papers.length} unique papers from arXiv (across all topics)`);
 
   let papersProcessed = 0;
   let papersSummarized = 0;
