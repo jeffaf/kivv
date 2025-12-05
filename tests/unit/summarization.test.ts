@@ -14,6 +14,7 @@ import { SummarizationClient } from '../../shared/summarization';
 const ANTHROPIC_RATE_LIMIT_MS = 200;
 const ANTHROPIC_JITTER_MIN_MS = 50;
 const DAILY_BUDGET_CAP_USD = 1.0;
+const DEFAULT_RELEVANCE_THRESHOLD = 0.7;
 
 // =============================================================================
 // Mock Anthropic API
@@ -425,19 +426,20 @@ describe('SummarizationClient', () => {
     });
 
     it('stops processing when budget exceeded', async () => {
-      // Create a client and manually set cost to exceed budget
+      // Create a client
       const budgetClient = new SummarizationClient('test-key');
 
-      // Mock high-cost responses to exceed $1 budget
+      // Mock high-cost responses (shouldn't be called since budget exceeded)
       mockFetch([mockHaikuResponse(0.3)]);
 
-      // Manually set total cost to exceed budget
-      (budgetClient as any).totalCost = DAILY_BUDGET_CAP_USD + 0.01;
-
+      // Pass exceeded budget via currentTotalCost parameter (5th arg)
+      // This simulates the checkpoint.total_cost being passed from automation
       const result = await budgetClient.summarize(
         'Test Paper',
         'Test abstract',
-        ['AI']
+        ['AI'],
+        DEFAULT_RELEVANCE_THRESHOLD,
+        DAILY_BUDGET_CAP_USD + 0.01  // Pass exceeded budget
       );
 
       expect(result.summary).toBeNull();
