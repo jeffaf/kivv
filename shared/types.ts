@@ -113,6 +113,7 @@ export interface Env {
   D1_DATABASE_ID: string;
   KV_NAMESPACE_ID: string;
   R2_BUCKET_NAME: string;
+  NTFY_TOPIC?: string;
 }
 
 // =============================================================================

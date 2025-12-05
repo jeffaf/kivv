@@ -29,6 +29,7 @@ id = "7f6b7437931c4c268c27d01a4169101b"
 # Environment variables
 [vars]
 ENVIRONMENT = "production"
+NTFY_TOPIC = "kivv-papers"
 
 # Secrets (set via: wrangler secret put CLAUDE_API_KEY)
 # CLAUDE_API_KEY - Set via wrangler secret put

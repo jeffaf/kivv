@@ -337,6 +337,11 @@ async function runAutomation(env: Env): Promise<AutomationResult> {
   }
   console.log('[AUTOMATION] ==================');
 
+  // Send notification if papers were found
+  if (checkpoint.papers_summarized > 0) {
+    await sendNotification(env, checkpoint);
+  }
+
   // Cleanup old checkpoints (only if fully completed)
   if (checkpoint.completed) {
     await cleanupOldCheckpoints(env);
@@ -607,4 +612,51 @@ async function cleanupOldCheckpoints(env: Env): Promise<void> {
   // KV automatically expires keys after 7 days (set in expirationTtl)
   // No manual cleanup needed for now
   console.log('[CLEANUP] Old checkpoints will auto-expire after 7 days');
+}
+
+// =============================================================================
+// Notifications (ntfy.sh)
+// =============================================================================
+
+/**
+ * Send notification via ntfy.sh when new papers are found
+ * Simple HTTP POST - no auth required, just pick a topic name
+ *
+ * @param env - Environment with NTFY_TOPIC
+ * @param checkpoint - Current checkpoint with paper counts
+ */
+async function sendNotification(env: Env, checkpoint: Checkpoint): Promise<void> {
+  const topic = env.NTFY_TOPIC;
+  if (!topic) {
+    console.log('[NOTIFY] No NTFY_TOPIC configured, skipping notification');
+    return;
+  }
+
+  try {
+    const title = `📄 ${checkpoint.papers_summarized} new paper${checkpoint.papers_summarized === 1 ? '' : 's'}`;
+    const body = [
+      `Found ${checkpoint.papers_found} papers, ${checkpoint.papers_summarized} relevant`,
+      `Cost: $${checkpoint.total_cost.toFixed(4)}`,
+      checkpoint.completed ? '✅ Daily run complete' : '⏳ Batch complete, more pending',
+    ].join('\n');
+
+    const response = await fetch(`https://ntfy.sh/${topic}`, {
+      method: 'POST',
+      headers: {
+        'Title': title,
+        'Priority': checkpoint.papers_summarized >= 5 ? 'high' : 'default',
+        'Tags': 'page_facing_up,mag',
+      },
+      body: body,
+    });
+
+    if (response.ok) {
+      console.log(`[NOTIFY] Sent notification to ntfy.sh/${topic}`);
+    } else {
+      console.error(`[NOTIFY] Failed: ${response.status} ${response.statusText}`);
+    }
+  } catch (error) {
+    console.error('[NOTIFY] Error sending notification:', error);
+    // Don't throw - notification failure shouldn't break automation
+  }
 }
