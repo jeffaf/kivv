@@ -1,0 +1,5 @@
+# Known Bugs
+
+- [BUG] Production MCP API keys are hardcoded and seeded into new databases via `shared/schema.sql`, exposing real credentials in version control. The seeds at lines 125-128 insert `api_key` values directly instead of pulling them from environment variables, meaning anyone with schema access can read or use them. These secrets need to be removed from the seed data and rotated immediately. 
+- [BUG] Sample topic seed data in `shared/schema.sql` assumes the two seeded users have IDs 1 and 2, and inserts topics with those hardcoded foreign keys. If the users table already contains rows (or auto-increment IDs shift), applying the seed will either violate foreign key constraints or attach topics to the wrong users. The seed should look up the actual user IDs or avoid hardcoded values.
+- [BUG] The arXiv client in `shared/arxiv-client.ts` uses the unsecured `http://export.arxiv.org/api/query` endpoint. Using HTTP exposes requests to interception and breaks environments that require HTTPS. The client should switch to `https://` to protect traffic.
