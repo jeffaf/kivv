@@ -70,18 +70,32 @@ interface AutomationResult {
 
 export default {
   /**
-   * Scheduled cron handler - runs daily at 6 AM UTC
-   * Triggered automatically by Cloudflare cron
+   * Scheduled cron handler
+   * Two cron triggers:
+   * - 6 AM UTC: Paper processing (fetch, summarize, store)
+   * - 6 PM UTC: Daily digest notification
    */
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    console.log('[CRON] Starting daily automation at', new Date().toISOString());
+    const scheduledHour = new Date(event.scheduledTime).getUTCHours();
 
-    try {
-      await runAutomation(env);
-    } catch (error) {
-      console.error('[CRON] Fatal error:', error);
-      // Re-throw to mark the cron run as failed in Cloudflare dashboard
-      throw error;
+    if (scheduledHour === 18) {
+      // 6 PM UTC - Notification cron
+      console.log('[CRON:NOTIFY] Starting daily digest notification at', new Date().toISOString());
+      try {
+        await sendDailyDigestNotification(env);
+      } catch (error) {
+        console.error('[CRON:NOTIFY] Error:', error);
+        // Don't re-throw - notification failure shouldn't be a cron failure
+      }
+    } else {
+      // 6 AM UTC (or any other time) - Processing cron
+      console.log('[CRON:PROCESS] Starting paper processing at', new Date().toISOString());
+      try {
+        await runAutomation(env);
+      } catch (error) {
+        console.error('[CRON:PROCESS] Fatal error:', error);
+        throw error;
+      }
     }
   },
 
@@ -173,8 +187,47 @@ export default {
       }
     }
 
+    // Manual notification trigger endpoint
+    if (url.pathname === '/notify' && request.method === 'POST') {
+      const authHeader = request.headers.get('authorization');
+      const cronSecret = env.CRON_SECRET || 'test-secret';
+
+      if (authHeader !== `Bearer ${cronSecret}`) {
+        return new Response(JSON.stringify({
+          error: 'Forbidden',
+          message: 'Invalid or missing authorization'
+        }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      try {
+        console.log('[MANUAL] Manual notification triggered');
+        await sendDailyDigestNotification(env);
+        return new Response(JSON.stringify({
+          success: true,
+          message: 'Notification sent (if papers exist)',
+          timestamp: new Date().toISOString()
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        console.error('[MANUAL] Notification error:', error);
+        return new Response(JSON.stringify({
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: new Date().toISOString()
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
     // Default response
-    return new Response('kivv Automation Worker\n\nEndpoints:\n- GET /health - Health check\n- POST /run - Manual trigger (requires auth)', {
+    return new Response('kivv Automation Worker\n\nEndpoints:\n- GET /health - Health check\n- GET /status - Check today\'s checkpoint\n- POST /run - Manual processing trigger (requires auth)\n- POST /notify - Manual notification trigger (requires auth)', {
       status: 200,
       headers: { 'Content-Type': 'text/plain' }
     });
@@ -338,10 +391,8 @@ async function runAutomation(env: Env): Promise<AutomationResult> {
   }
   console.log('[AUTOMATION] ==================');
 
-  // Send notification only when daily run completes (not per batch)
-  if (checkpoint.completed && checkpoint.papers_summarized > 0) {
-    await sendNotification(env, checkpoint);
-  }
+  // Notification is now decoupled - runs on its own 6 PM UTC cron
+  // No notification logic here anymore
 
   // Cleanup old checkpoints (only if fully completed)
   if (checkpoint.completed) {
@@ -628,22 +679,50 @@ async function cleanupOldCheckpoints(env: Env): Promise<void> {
 // =============================================================================
 
 /**
- * Send notification via ntfy.sh when new papers are found
- * Simple HTTP POST - no auth required, just pick a topic name
+ * Send daily digest notification via ntfy.sh
+ * Decoupled from processing - queries DB directly for today's papers
+ * Runs on its own cron schedule (6 PM UTC)
  *
  * @param env - Environment with NTFY_TOPIC and DB
- * @param checkpoint - Current checkpoint with paper counts
  */
-async function sendNotification(env: Env, checkpoint: Checkpoint): Promise<void> {
+async function sendDailyDigestNotification(env: Env): Promise<void> {
   const topic = env.NTFY_TOPIC;
   if (!topic) {
     console.log('[NOTIFY] No NTFY_TOPIC configured, skipping notification');
     return;
   }
 
+  const today = formatDate(new Date());
+
+  // Check if we already sent a notification today (idempotency)
+  const notificationKey = `notification:sent:${today}`;
+  const alreadySent = await env.CACHE.get(notificationKey);
+  if (alreadySent) {
+    console.log('[NOTIFY] Already sent notification today, skipping');
+    return;
+  }
+
   try {
-    // Fetch today's summarized paper titles from database
-    const today = checkpoint.date;
+    // Query database directly for today's papers - completely independent of checkpoint
+    const stats = await env.DB
+      .prepare(`
+        SELECT
+          COUNT(*) as total,
+          COUNT(CASE WHEN summary IS NOT NULL THEN 1 END) as summarized
+        FROM papers
+        WHERE DATE(created_at) = ?
+      `)
+      .bind(today)
+      .first<{ total: number; summarized: number }>();
+
+    const paperCount = stats?.summarized || 0;
+
+    if (paperCount === 0) {
+      console.log('[NOTIFY] No papers summarized today, skipping notification');
+      return;
+    }
+
+    // Fetch top papers by relevance
     const papers = await env.DB
       .prepare(`
         SELECT title FROM papers
@@ -655,24 +734,23 @@ async function sendNotification(env: Env, checkpoint: Checkpoint): Promise<void>
       .bind(today)
       .all<{ title: string }>();
 
-    const title = `📄 ${checkpoint.papers_summarized} new paper${checkpoint.papers_summarized === 1 ? '' : 's'}`;
+    const title = `📄 ${paperCount} new paper${paperCount === 1 ? '' : 's'}`;
 
-    // Build body with paper titles (truncated to fit 4KB limit)
+    // Build body with paper titles
     const bodyParts = [
-      `Found ${checkpoint.papers_found} papers, ${checkpoint.papers_summarized} passed relevance filter`,
+      `${paperCount} papers passed relevance filter today`,
       '',
     ];
 
-    if (papers.results.length > 0) {
+    if (papers.results && papers.results.length > 0) {
       for (const paper of papers.results) {
-        // Truncate long titles to ~80 chars
         const truncatedTitle = paper.title.length > 80
           ? paper.title.substring(0, 77) + '...'
           : paper.title;
         bodyParts.push(`• ${truncatedTitle}`);
       }
-      if (checkpoint.papers_summarized > 5) {
-        bodyParts.push(`...and ${checkpoint.papers_summarized - 5} more`);
+      if (paperCount > 5) {
+        bodyParts.push(`...and ${paperCount - 5} more`);
       }
     }
 
@@ -680,19 +758,20 @@ async function sendNotification(env: Env, checkpoint: Checkpoint): Promise<void>
       method: 'POST',
       headers: {
         'Title': title,
-        'Priority': checkpoint.papers_summarized >= 5 ? 'high' : 'default',
+        'Priority': paperCount >= 5 ? 'high' : 'default',
         'Tags': 'page_facing_up,mag',
       },
       body: bodyParts.join('\n'),
     });
 
     if (response.ok) {
-      console.log(`[NOTIFY] Sent notification to ntfy.sh/${topic}`);
+      // Mark notification as sent (expires after 24 hours)
+      await env.CACHE.put(notificationKey, 'true', { expirationTtl: 24 * 60 * 60 });
+      console.log(`[NOTIFY] Sent daily digest to ntfy.sh/${topic}: ${paperCount} papers`);
     } else {
       console.error(`[NOTIFY] Failed: ${response.status} ${response.statusText}`);
     }
   } catch (error) {
     console.error('[NOTIFY] Error sending notification:', error);
-    // Don't throw - notification failure shouldn't break automation
   }
 }

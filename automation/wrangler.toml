@@ -6,9 +6,11 @@ compatibility_flags = ["nodejs_compat"]
 # Workers configuration
 workers_dev = true
 
-# Cron trigger - runs daily at 6 AM UTC
+# Cron triggers
+# - 6 AM UTC: Paper processing (fetch, summarize, store)
+# - 6 PM UTC: Daily digest notification (independent of processing state)
 [triggers]
-crons = ["0 6 * * *"]
+crons = ["0 6 * * *", "0 18 * * *"]
 
 # D1 Database binding
 [[d1_databases]]
