@@ -754,23 +754,42 @@ async function sendDailyDigestNotification(env: Env): Promise<void> {
       }
     }
 
-    const response = await fetch(`https://ntfy.sh/${topic}`, {
-      method: 'POST',
-      headers: {
-        'Title': title,
-        'Priority': paperCount >= 5 ? 'high' : 'default',
-        'Tags': 'page_facing_up,mag',
-      },
-      body: bodyParts.join('\n'),
-    });
+    // Retry logic with exponential backoff for rate limits
+    const maxRetries = 3;
+    let lastError: string | null = null;
 
-    if (response.ok) {
-      // Mark notification as sent (expires after 24 hours)
-      await env.CACHE.put(notificationKey, 'true', { expirationTtl: 24 * 60 * 60 });
-      console.log(`[NOTIFY] Sent daily digest to ntfy.sh/${topic}: ${paperCount} papers`);
-    } else {
-      console.error(`[NOTIFY] Failed: ${response.status} ${response.statusText}`);
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const response = await fetch(`https://ntfy.sh/${topic}`, {
+        method: 'POST',
+        headers: {
+          'Title': title,
+          'Priority': 'high',
+          'Tags': 'rotating_light,page_facing_up',
+          'Actions': 'view, Open Feed, https://ntfy.sh/kivv-papers, clear=true',
+        },
+        body: bodyParts.join('\n'),
+      });
+
+      if (response.ok) {
+        // Mark notification as sent (expires after 24 hours)
+        await env.CACHE.put(notificationKey, 'true', { expirationTtl: 24 * 60 * 60 });
+        console.log(`[NOTIFY] Sent daily digest to ntfy.sh/${topic}: ${paperCount} papers (attempt ${attempt})`);
+        return;
+      }
+
+      lastError = `${response.status} ${response.statusText}`;
+
+      if (response.status === 429 && attempt < maxRetries) {
+        const backoffMs = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+        console.log(`[NOTIFY] Rate limited, retrying in ${backoffMs}ms (attempt ${attempt}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+        continue;
+      }
+
+      break;
     }
+
+    console.error(`[NOTIFY] Failed after ${maxRetries} attempts: ${lastError}`);
   } catch (error) {
     console.error('[NOTIFY] Error sending notification:', error);
   }
