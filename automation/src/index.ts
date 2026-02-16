@@ -78,6 +78,8 @@ export default {
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     const scheduledHour = new Date(event.scheduledTime).getUTCHours();
 
+    console.log(`[CRON] scheduledHour=${scheduledHour}, scheduledTime=${event.scheduledTime}, date=${new Date(event.scheduledTime).toISOString()}`);
+
     if (scheduledHour === 18) {
       // 6 PM UTC - Notification cron
       console.log('[CRON:NOTIFY] Starting daily digest notification at', new Date().toISOString());
@@ -218,6 +220,32 @@ export default {
         return new Response(JSON.stringify({
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: new Date().toISOString()
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    // Debug: test notification without auth (temporary)
+    if (url.pathname === '/debug-notify' && request.method === 'GET') {
+      try {
+        console.log('[DEBUG] Testing notification pathway');
+        await sendDailyDigestNotification(env);
+        return new Response(JSON.stringify({
+          success: true,
+          message: 'Debug notification attempted',
+          timestamp: new Date().toISOString()
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
           timestamp: new Date().toISOString()
         }), {
           status: 500,
@@ -686,111 +714,172 @@ async function cleanupOldCheckpoints(env: Env): Promise<void> {
  * @param env - Environment with NTFY_TOPIC and DB
  */
 async function sendDailyDigestNotification(env: Env): Promise<void> {
+  const today = formatDate(new Date());
+  console.log(`[NOTIFY] Today=${today}`);
+
+  // Separate idempotency keys for each channel
+  const ntfyKey = `notification:ntfy:${today}`;
+  const telegramKey = `notification:telegram:${today}`;
+  const ntfyAlreadySent = await env.CACHE.get(ntfyKey);
+  const telegramAlreadySent = await env.CACHE.get(telegramKey);
+
+  if (ntfyAlreadySent && telegramAlreadySent) {
+    console.log('[NOTIFY] Already sent via all channels today, skipping');
+    return;
+  }
+
+  // Query database for today's papers
+  console.log('[NOTIFY] Querying DB for papers...');
+  const stats = await env.DB
+    .prepare(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(CASE WHEN summary IS NOT NULL THEN 1 END) as summarized
+      FROM papers
+      WHERE DATE(created_at) = ?
+    `)
+    .bind(today)
+    .first<{ total: number; summarized: number }>();
+
+  console.log(`[NOTIFY] DB stats: total=${stats?.total}, summarized=${stats?.summarized}`);
+  const paperCount = stats?.summarized || 0;
+
+  if (paperCount === 0) {
+    console.log('[NOTIFY] No papers summarized today, skipping notification');
+    return;
+  }
+
+  // Fetch top papers by relevance
+  const papers = await env.DB
+    .prepare(`
+      SELECT title FROM papers
+      WHERE summary IS NOT NULL
+      AND DATE(created_at) = ?
+      ORDER BY relevance_score DESC
+      LIMIT 5
+    `)
+    .bind(today)
+    .all<{ title: string }>();
+
+  const title = `📄 ${paperCount} new paper${paperCount === 1 ? '' : 's'}`;
+
+  const bodyParts = [
+    `${paperCount} papers passed relevance filter today`,
+    '',
+  ];
+
+  if (papers.results && papers.results.length > 0) {
+    for (const paper of papers.results) {
+      const truncatedTitle = paper.title.length > 80
+        ? paper.title.substring(0, 77) + '...'
+        : paper.title;
+      bodyParts.push(`• ${truncatedTitle}`);
+    }
+    if (paperCount > 5) {
+      bodyParts.push(`...and ${paperCount - 5} more`);
+    }
+  }
+
+  const body = bodyParts.join('\n');
+
+  // Send via ntfy (best-effort, known to fail from CF Workers due to shared IP rate limits)
+  if (!ntfyAlreadySent) {
+    await sendNtfyNotification(env, title, body, ntfyKey);
+  }
+
+  // Send via Telegram (reliable backup)
+  if (!telegramAlreadySent) {
+    await sendTelegramNotification(env, title, body, telegramKey);
+  }
+}
+
+async function sendNtfyNotification(
+  env: Env,
+  title: string,
+  body: string,
+  cacheKey: string,
+): Promise<void> {
   const topic = env.NTFY_TOPIC;
   if (!topic) {
-    console.log('[NOTIFY] No NTFY_TOPIC configured, skipping notification');
+    console.log('[NOTIFY:NTFY] No NTFY_TOPIC configured, skipping');
     return;
   }
 
-  const today = formatDate(new Date());
+  const maxRetries = 3;
+  let lastError: string | null = null;
 
-  // Check if we already sent a notification today (idempotency)
-  const notificationKey = `notification:sent:${today}`;
-  const alreadySent = await env.CACHE.get(notificationKey);
-  if (alreadySent) {
-    console.log('[NOTIFY] Already sent notification today, skipping');
-    return;
-  }
-
-  try {
-    // Query database directly for today's papers - completely independent of checkpoint
-    const stats = await env.DB
-      .prepare(`
-        SELECT
-          COUNT(*) as total,
-          COUNT(CASE WHEN summary IS NOT NULL THEN 1 END) as summarized
-        FROM papers
-        WHERE DATE(created_at) = ?
-      `)
-      .bind(today)
-      .first<{ total: number; summarized: number }>();
-
-    const paperCount = stats?.summarized || 0;
-
-    if (paperCount === 0) {
-      console.log('[NOTIFY] No papers summarized today, skipping notification');
-      return;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    if (attempt > 1) {
+      const backoffMs = Math.pow(2, attempt) * 1000 + Math.random() * 2000;
+      console.log(`[NOTIFY:NTFY] Waiting ${Math.round(backoffMs)}ms before attempt ${attempt}/${maxRetries}`);
+      await new Promise(resolve => setTimeout(resolve, backoffMs));
     }
 
-    // Fetch top papers by relevance
-    const papers = await env.DB
-      .prepare(`
-        SELECT title FROM papers
-        WHERE summary IS NOT NULL
-        AND DATE(created_at) = ?
-        ORDER BY relevance_score DESC
-        LIMIT 5
-      `)
-      .bind(today)
-      .all<{ title: string }>();
-
-    const title = `📄 ${paperCount} new paper${paperCount === 1 ? '' : 's'}`;
-
-    // Build body with paper titles
-    const bodyParts = [
-      `${paperCount} papers passed relevance filter today`,
-      '',
-    ];
-
-    if (papers.results && papers.results.length > 0) {
-      for (const paper of papers.results) {
-        const truncatedTitle = paper.title.length > 80
-          ? paper.title.substring(0, 77) + '...'
-          : paper.title;
-        bodyParts.push(`• ${truncatedTitle}`);
-      }
-      if (paperCount > 5) {
-        bodyParts.push(`...and ${paperCount - 5} more`);
-      }
-    }
-
-    // Retry logic with exponential backoff for rate limits
-    const maxRetries = 3;
-    let lastError: string | null = null;
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
       const response = await fetch(`https://ntfy.sh/${topic}`, {
         method: 'POST',
         headers: {
           'Title': title,
           'Priority': 'high',
           'Tags': 'rotating_light,page_facing_up',
-          'Actions': 'view, Open Feed, https://ntfy.sh/kivv-papers, clear=true',
+          'Actions': `view, Open Feed, https://ntfy.sh/${topic}, clear=true`,
         },
-        body: bodyParts.join('\n'),
+        body,
       });
 
       if (response.ok) {
-        // Mark notification as sent (expires after 24 hours)
-        await env.CACHE.put(notificationKey, 'true', { expirationTtl: 24 * 60 * 60 });
-        console.log(`[NOTIFY] Sent daily digest to ntfy.sh/${topic}: ${paperCount} papers (attempt ${attempt})`);
+        await env.CACHE.put(cacheKey, 'true', { expirationTtl: 24 * 60 * 60 });
+        console.log(`[NOTIFY:NTFY] Sent to ntfy.sh/${topic} (attempt ${attempt})`);
         return;
       }
 
       lastError = `${response.status} ${response.statusText}`;
-
-      if (response.status === 429 && attempt < maxRetries) {
-        const backoffMs = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
-        console.log(`[NOTIFY] Rate limited, retrying in ${backoffMs}ms (attempt ${attempt}/${maxRetries})`);
-        await new Promise(resolve => setTimeout(resolve, backoffMs));
-        continue;
-      }
-
-      break;
+      console.log(`[NOTIFY:NTFY] Attempt ${attempt} failed: ${lastError}`);
+      if (response.status !== 429) break;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+      console.error(`[NOTIFY:NTFY] Attempt ${attempt} error: ${lastError}`);
     }
+  }
 
-    console.error(`[NOTIFY] Failed after ${maxRetries} attempts: ${lastError}`);
+  console.error(`[NOTIFY:NTFY] Failed after ${maxRetries} attempts: ${lastError}`);
+}
+
+async function sendTelegramNotification(
+  env: Env,
+  title: string,
+  body: string,
+  cacheKey: string,
+): Promise<void> {
+  const botToken = (env as any).TELEGRAM_BOT_TOKEN;
+  const chatId = (env as any).TELEGRAM_CHAT_ID;
+
+  if (!botToken || !chatId) {
+    console.log('[NOTIFY:TG] No TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID configured, skipping');
+    return;
+  }
+
+  try {
+    const message = `📄 *kivv*\n${title}\n\n${body}`;
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        parse_mode: 'Markdown',
+        disable_web_page_preview: true,
+      }),
+    });
+
+    if (response.ok) {
+      await env.CACHE.put(cacheKey, 'true', { expirationTtl: 24 * 60 * 60 });
+      console.log(`[NOTIFY:TG] Sent to Telegram chat ${chatId}`);
+    } else {
+      const err = await response.text().catch(() => 'no body');
+      console.error(`[NOTIFY:TG] Failed: ${response.status} - ${err}`);
+    }
   } catch (error) {
-    console.error('[NOTIFY] Error sending notification:', error);
+    console.error('[NOTIFY:TG] Error:', error);
   }
 }
