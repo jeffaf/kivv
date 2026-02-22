@@ -19,7 +19,7 @@ import { CLAUDE_SONNET_MODEL } from '../../shared/constants';
 // Configuration Constants
 // =============================================================================
 
-const BATCH_SIZE = 8; // Papers per run to stay under 30s cron timeout
+const BATCH_SIZE = 20; // Papers per run (cron has 30s wall time, ~300ms per API call × 2 stages × 20 = ~12s)
 
 // =============================================================================
 // Types & Interfaces
