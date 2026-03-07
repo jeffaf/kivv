@@ -574,7 +574,7 @@ async function processUser(
         paper.title,
         paper.abstract,
         topicNames,
-        0.5, // relevance threshold (lowered for testing)
+        0.7, // relevance threshold (0.7 = security-relevant or better)
         checkpoint.total_cost // Pass running total from checkpoint
       );
 

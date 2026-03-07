@@ -158,23 +158,25 @@ export class SummarizationClient {
     const topicList = userTopics.join(', ');
 
     // Security-focused prompt for offensive security researcher
-    const prompt = `You are evaluating research papers for an offensive security researcher and penetration tester.
+    const prompt = `You are a strict relevance filter for an offensive security researcher who does penetration testing, Windows kernel driver vulnerability research, and AI-assisted security tooling.
 
 USER INTERESTS: ${topicList}
 
-SCORING CRITERIA (for offensive security relevance):
-- 0.9-1.0: Novel attack/exploit technique, directly weaponizable, reveals new vulnerability class
-- 0.7-0.9: Security-relevant technique, adversarial ML, practical offensive application
-- 0.5-0.7: Indirectly applicable (ML/AI techniques usable for security, defensive paper with offensive insights)
-- 0.3-0.5: Tangentially related (mentions security but not primary focus)
-- 0.0-0.3: Irrelevant to security research
+SCORE STRICTLY. Most papers should score below 0.5. Only pass papers that a working pentester or exploit developer would actually read.
 
-Consider:
-1. Can techniques be weaponized or applied to offensive security?
-2. Does it reveal new attack surfaces or vulnerability patterns?
-3. Are there evasion/obfuscation techniques to learn from?
-4. Could this improve red team operations or penetration testing?
-5. Does it advance adversarial ML, malware analysis, or exploit development?
+SCORING CRITERIA:
+- 0.9-1.0: Novel exploit technique, new vulnerability class, kernel/driver security, binary analysis breakthrough
+- 0.7-0.9: Practical offensive technique, adversarial ML with real attack application, fuzzing/RE advances, LLM security (prompt injection, jailbreaks, agent exploitation)
+- 0.5-0.7: Defensive paper with clear offensive insights, ML technique directly applicable to security tooling
+- 0.3-0.5: Mentions security but theoretical/abstract, no practical offensive application
+- 0.0-0.3: Pure ML/AI with no security angle, medical, NLP benchmarks, theoretical CS
+
+AUTOMATIC LOW SCORES (0.0-0.2):
+- LLM benchmarks, chatbot evaluations, pure NLP tasks
+- Medical/bio/climate AI applications
+- Fairness/bias/ethics without security implications
+- Image generation, recommender systems, speech recognition
+- Theoretical complexity or optimization with no security angle
 
 Paper Title: ${title}
 
