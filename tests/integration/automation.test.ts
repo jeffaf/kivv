@@ -333,27 +333,27 @@ describe('Error Handling', () => {
 // =============================================================================
 
 describe('Authentication', () => {
-  test('should reject requests without cf-cron header or auth', () => {
+  test('should reject requests without auth', () => {
     const request = new Request('http://localhost/run', {
       method: 'POST',
       headers: {}
     });
 
-    const cronHeader = request.headers.get('cf-cron');
     const authHeader = request.headers.get('authorization');
 
-    const isAuthenticated = cronHeader || authHeader === 'Bearer test-secret';
+    const isAuthenticated = authHeader === 'Bearer test-secret';
     expect(isAuthenticated).toBe(false);
   });
 
-  test('should accept requests with cf-cron header', () => {
+  test('should reject spoofed cf-cron header without auth', () => {
     const request = new Request('http://localhost/run', {
       method: 'POST',
       headers: { 'cf-cron': '1' }
     });
 
-    const cronHeader = request.headers.get('cf-cron');
-    expect(cronHeader).toBeDefined();
+    const authHeader = request.headers.get('authorization');
+    const isAuthenticated = authHeader === 'Bearer test-secret';
+    expect(isAuthenticated).toBe(false);
   });
 
   test('should accept requests with valid authorization header', () => {

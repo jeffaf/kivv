@@ -114,12 +114,12 @@ describe('Shared Utils', () => {
 
 describe('Shared Constants', () => {
   it('should export arXiv configuration', () => {
-    expect(ARXIV_API_BASE_URL).toBe('http://export.arxiv.org/api/query');
+    expect(ARXIV_API_BASE_URL).toBe('https://export.arxiv.org/api/query');
   });
 
   it('should export model identifiers', () => {
-    expect(CLAUDE_HAIKU_MODEL).toBe('claude-3-5-haiku-20241022');
-    expect(CLAUDE_SONNET_MODEL).toBe('claude-3-5-sonnet-20241022');
+    expect(CLAUDE_HAIKU_MODEL).toBe('claude-3-haiku-20240307');
+    expect(CLAUDE_SONNET_MODEL).toBe('claude-sonnet-4-20250514');
   });
 
   it('should export token limits', () => {

@@ -53,6 +53,7 @@ interface UserProcessingResult {
   cost: number;
   batch_exhausted: boolean;        // True if we hit batch limit
   last_arxiv_id?: string;          // Last paper arxiv_id processed
+  query_errors?: string[];         // Non-fatal arXiv topic query errors
 }
 
 /**
@@ -62,6 +63,10 @@ interface AutomationResult {
   batch_complete: boolean;         // True if batch limit reached
   total_complete: boolean;         // True if all users and papers done
   checkpoint: Checkpoint;
+}
+
+interface AutomationOptions {
+  force?: boolean;
 }
 
 // =============================================================================
@@ -138,12 +143,11 @@ export default {
 
     // Manual trigger endpoint
     if (url.pathname === '/run' && request.method === 'POST') {
-      // Only allow cron or manual trigger with secret
-      const cronHeader = request.headers.get('cf-cron');
+      // Manual trigger requires a configured secret. Scheduled events use scheduled().
       const authHeader = request.headers.get('authorization');
-      const cronSecret = env.CRON_SECRET || 'test-secret';
+      const cronSecret = getCronSecret(env);
 
-      if (!cronHeader && authHeader !== `Bearer ${cronSecret}`) {
+      if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
         return new Response(JSON.stringify({
           error: 'Forbidden',
           message: 'Invalid or missing authorization'
@@ -155,11 +159,14 @@ export default {
 
       try {
         console.log('[MANUAL] Manual automation run triggered');
-        const result = await runAutomation(env);
+        const force = url.searchParams.get('force') === 'true';
+        const result = await runAutomation(env, { force });
 
         return new Response(JSON.stringify({
           success: true,
-          message: result.total_complete ? 'All papers processed for today' : `Batch complete (${BATCH_SIZE} papers)`,
+          message: result.total_complete
+            ? `All papers processed for today${force ? ' (forced rerun)' : ''}`
+            : `Batch complete (${BATCH_SIZE} papers)`,
           batch_complete: result.batch_complete,
           total_complete: result.total_complete,
           checkpoint: {
@@ -192,9 +199,9 @@ export default {
     // Manual notification trigger endpoint
     if (url.pathname === '/notify' && request.method === 'POST') {
       const authHeader = request.headers.get('authorization');
-      const cronSecret = env.CRON_SECRET || 'test-secret';
+      const cronSecret = getCronSecret(env);
 
-      if (authHeader !== `Bearer ${cronSecret}`) {
+      if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
         return new Response(JSON.stringify({
           error: 'Forbidden',
           message: 'Invalid or missing authorization'
@@ -228,32 +235,6 @@ export default {
       }
     }
 
-    // Debug: test notification without auth (temporary)
-    if (url.pathname === '/debug-notify' && request.method === 'GET') {
-      try {
-        console.log('[DEBUG] Testing notification pathway');
-        await sendDailyDigestNotification(env);
-        return new Response(JSON.stringify({
-          success: true,
-          message: 'Debug notification attempted',
-          timestamp: new Date().toISOString()
-        }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      } catch (error) {
-        return new Response(JSON.stringify({
-          success: false,
-          error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
-          timestamp: new Date().toISOString()
-        }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-    }
-
     // Default response
     return new Response('kivv Automation Worker\n\nEndpoints:\n- GET /health - Health check\n- GET /status - Check today\'s checkpoint\n- POST /run - Manual processing trigger (requires auth)\n- POST /notify - Manual notification trigger (requires auth)', {
       status: 200,
@@ -270,12 +251,15 @@ export default {
  * Main automation workflow with checkpoint support
  * Processes all active users and their topics
  */
-async function runAutomation(env: Env): Promise<AutomationResult> {
+async function runAutomation(
+  env: Env,
+  options: AutomationOptions = {}
+): Promise<AutomationResult> {
   const today = formatDate(new Date());
   const checkpointKey = `checkpoint:automation:${today}`;
 
   // Load or create checkpoint
-  const checkpoint: Checkpoint = await loadCheckpoint(env, checkpointKey) || {
+  const checkpoint: Checkpoint = (!options.force && await loadCheckpoint(env, checkpointKey)) || {
     date: today,
     users_processed: 0,
     papers_found: 0,
@@ -366,6 +350,9 @@ async function runAutomation(env: Env): Promise<AutomationResult> {
       checkpoint.papers_processed_this_run += (result.papers_summarized + result.papers_skipped);
       checkpoint.total_cost += result.cost;
       checkpoint.last_user_id = user.id;
+      if (result.query_errors && result.query_errors.length > 0) {
+        checkpoint.errors.push(...result.query_errors);
+      }
 
       await saveCheckpoint(env, checkpointKey, checkpoint);
 
@@ -421,6 +408,18 @@ async function runAutomation(env: Env): Promise<AutomationResult> {
 
   // Notification is now decoupled - runs on its own 6 PM UTC cron
   // No notification logic here anymore
+  if (checkpoint.completed && checkpoint.users_processed > 0 && checkpoint.papers_found === 0) {
+    await sendAutomationHealthAlert(
+      env,
+      `kivv automation found 0 papers on ${checkpoint.date}`,
+      [
+        'The daily arXiv collection completed without discovering any papers.',
+        'That may be legitimate, but for the current topic set it is unusual and should be checked.',
+        `Users processed: ${checkpoint.users_processed}`,
+        `Errors recorded: ${checkpoint.errors.length}`,
+      ].join('\n')
+    );
+  }
 
   // Cleanup old checkpoints (only if fully completed)
   if (checkpoint.completed) {
@@ -472,20 +471,28 @@ async function processUser(
 
   // Collect topic names for relevance scoring
   const topicNames = topics.results.map(t => t.topic_name);
+  const relevanceThreshold = Math.min(
+    ...topics.results.map(t => typeof t.relevance_threshold === 'number' ? t.relevance_threshold : 0.7)
+  );
+  const shouldGenerateSummaries = topics.results.some(t => t.generate_summaries !== false && t.generate_summaries !== 0);
 
   // Query each topic individually to avoid arXiv API errors from overly complex queries
   // Then deduplicate papers by arxiv_id
   const paperMap = new Map<string, { arxiv_id: string; title: string; authors: string; abstract: string; categories: string; published_date: string; pdf_url: string }>();
+  const queryErrors: string[] = [];
 
   for (const topic of topics.results) {
     try {
       console.log(`[USER:${user.username}] Querying topic: ${topic.topic_name}`);
+      const maxResults = clampTopicMaxResults(topic.max_papers_per_day);
 
       const topicPapers = await arxivClient.search({
         query: topic.arxiv_query,
-        maxResults: 50, // Limit per topic to avoid rate limiting
+        maxResults,
         sortBy: 'submittedDate',
         sortOrder: 'descending'
+      }, {
+        throwOnError: true
       });
 
       console.log(`[USER:${user.username}] Topic "${topic.topic_name}" returned ${topicPapers.length} papers`);
@@ -497,9 +504,15 @@ async function processUser(
         }
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       console.error(`[USER:${user.username}] Error querying topic "${topic.topic_name}":`, error);
+      queryErrors.push(`${user.username}/${topic.topic_name}: ${message}`);
       // Continue with other topics even if one fails
     }
+  }
+
+  if (queryErrors.length === topics.results.length) {
+    throw new Error(`All arXiv topic queries failed for ${user.username}: ${queryErrors.join('; ')}`);
   }
 
   // Convert map to array, sorted by most recent first
@@ -570,11 +583,18 @@ async function processUser(
 
       // Summarize paper using two-stage AI
       // Pass checkpoint.total_cost to prevent budget bypass from new instances
+      if (!shouldGenerateSummaries) {
+        console.log(`[PAPER:${paper.arxiv_id}] Skipped summary generation by topic settings`);
+        papersSkipped++;
+        papersProcessed++;
+        continue;
+      }
+
       const result = await summarizationClient.summarize(
         paper.title,
         paper.abstract,
         topicNames,
-        0.5, // relevance threshold (lowered for testing)
+        relevanceThreshold,
         checkpoint.total_cost // Pass running total from checkpoint
       );
 
@@ -653,8 +673,17 @@ async function processUser(
     papers_skipped: papersSkipped,
     cost: totalCost,
     batch_exhausted: false,
-    last_arxiv_id: lastArxivId
+    last_arxiv_id: lastArxivId,
+    query_errors: queryErrors
   };
+}
+
+function clampTopicMaxResults(maxPapersPerDay: number | undefined | null): number {
+  if (typeof maxPapersPerDay !== 'number' || !Number.isFinite(maxPapersPerDay)) {
+    return 50;
+  }
+
+  return Math.min(Math.max(Math.trunc(maxPapersPerDay), 1), 100);
 }
 
 // =============================================================================
@@ -843,6 +872,32 @@ async function sendNtfyNotification(
   }
 
   console.error(`[NOTIFY:NTFY] Failed after ${maxRetries} attempts: ${lastError}`);
+}
+
+async function sendAutomationHealthAlert(
+  env: Env,
+  title: string,
+  body: string
+): Promise<void> {
+  const today = formatDate(new Date());
+  const ntfyKey = `alert:automation-zero:ntfy:${today}`;
+  const telegramKey = `alert:automation-zero:telegram:${today}`;
+
+  const ntfyAlreadySent = await env.CACHE.get(ntfyKey);
+  const telegramAlreadySent = await env.CACHE.get(telegramKey);
+
+  if (!ntfyAlreadySent) {
+    await sendNtfyNotification(env, title, body, ntfyKey);
+  }
+
+  if (!telegramAlreadySent) {
+    await sendTelegramNotification(env, title, body, telegramKey);
+  }
+}
+
+function getCronSecret(env: Env): string | null {
+  const secret = (env as any).CRON_SECRET;
+  return typeof secret === 'string' && secret.length > 0 ? secret : null;
 }
 
 async function sendTelegramNotification(

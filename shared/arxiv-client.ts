@@ -7,6 +7,7 @@
 // =============================================================================
 
 import { sleep } from './utils';
+import { ARXIV_API_BASE_URL } from './constants';
 
 /**
  * Paper data structure returned by arXiv API
@@ -34,6 +35,10 @@ export interface ArxivSearchParams {
   sortOrder?: 'ascending' | 'descending';                // Sort direction (default: descending)
 }
 
+export interface ArxivSearchOptions {
+  throwOnError?: boolean;
+}
+
 /**
  * arXiv API client with strict rate limiting
  *
@@ -47,7 +52,7 @@ export interface ArxivSearchParams {
  * });
  */
 export class ArxivClient {
-  private static readonly BASE_URL = 'http://export.arxiv.org/api/query';
+  private static readonly BASE_URL = ARXIV_API_BASE_URL;
   private static readonly RATE_LIMIT_MS = 3000;  // 3 seconds between requests
   private static readonly MIN_JITTER_MS = 100;   // Minimum random jitter
   private static readonly MAX_JITTER_MS = 500;   // Maximum random jitter
@@ -99,7 +104,10 @@ export class ArxivClient {
    *   maxResults: 20
    * });
    */
-  async search(params: ArxivSearchParams): Promise<ArxivPaper[]> {
+  async search(
+    params: ArxivSearchParams,
+    options: ArxivSearchOptions = {}
+  ): Promise<ArxivPaper[]> {
     // Enforce rate limit before making request
     await this.enforceRateLimit();
 
@@ -115,14 +123,23 @@ export class ArxivClient {
       const response = await fetch(url.toString());
 
       if (!response.ok) {
-        console.error(`arXiv API error: ${response.status} ${response.statusText}`);
+        const message = `arXiv API error: ${response.status} ${response.statusText}`;
+        console.error(message);
+        if (options.throwOnError) {
+          throw new Error(message);
+        }
         return [];
       }
 
       const xmlText = await response.text();
       return this.parseAtomXml(xmlText);
     } catch (error) {
-      console.error('arXiv API request failed:', error);
+      if (!(error instanceof Error && error.message.startsWith('arXiv API error:'))) {
+        console.error('arXiv API request failed:', error);
+      }
+      if (options.throwOnError) {
+        throw error;
+      }
       return [];
     }
   }
@@ -154,8 +171,8 @@ export class ArxivClient {
         const categories = this.extractCategories(entry);
 
         // Extract URLs (use fallback if not in XML)
-        const arxiv_url = this.extractLink(entry, 'alternate') || `http://arxiv.org/abs/${arxiv_id}`;
-        const pdf_url = this.extractLink(entry, 'related') || `http://arxiv.org/pdf/${arxiv_id}`;
+        const arxiv_url = this.extractLink(entry, 'alternate') || `https://arxiv.org/abs/${arxiv_id}`;
+        const pdf_url = this.extractLink(entry, 'related') || `https://arxiv.org/pdf/${arxiv_id}`;
 
         // Skip entries missing critical fields
         if (!arxiv_id || !title || !abstract) {
@@ -266,8 +283,22 @@ export class ArxivClient {
    * @private
    */
   private extractLink(xml: string, rel: string): string | null {
-    const match = xml.match(new RegExp(`<link[^>]+rel="${rel}"[^>]+href="([^"]+)"`));
-    return match ? match[1] : null;
+    const linkRegex = /<link\b([^>]+)>/g;
+    let match;
+
+    while ((match = linkRegex.exec(xml)) !== null) {
+      const attributes = match[1];
+      if (!new RegExp(`\\brel="${rel}"`).test(attributes)) {
+        continue;
+      }
+
+      const hrefMatch = attributes.match(/\bhref="([^"]+)"/);
+      if (hrefMatch) {
+        return hrefMatch[1];
+      }
+    }
+
+    return null;
   }
 }
 

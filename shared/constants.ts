@@ -10,7 +10,7 @@
 // =============================================================================
 
 /** arXiv API base URL for querying papers */
-export const ARXIV_API_BASE_URL = 'http://export.arxiv.org/api/query';
+export const ARXIV_API_BASE_URL = 'https://export.arxiv.org/api/query';
 
 /** arXiv rate limit: 1 request per interval */
 export const ARXIV_RATE_LIMIT_REQUESTS = 1;

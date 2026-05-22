@@ -301,8 +301,8 @@ describe('ArxivClient - XML Parsing', () => {
     const papers = await client.search({ query: 'cat:cs.AI' });
 
     expect(papers).toHaveLength(1);
-    expect(papers[0].arxiv_url).toBe('http://arxiv.org/abs/1234.56789');
-    expect(papers[0].pdf_url).toBe('http://arxiv.org/pdf/1234.56789');
+    expect(papers[0].arxiv_url).toBe('https://arxiv.org/abs/1234.56789');
+    expect(papers[0].pdf_url).toBe('https://arxiv.org/pdf/1234.56789');
   });
 });
 
@@ -423,6 +423,20 @@ describe('ArxivClient - Error Handling', () => {
     expect(papers).toHaveLength(0);
   });
 
+  it('should throw on HTTP error when requested', async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+      } as Response)
+    );
+
+    await expect(
+      client.search({ query: 'cat:cs.AI' }, { throwOnError: true })
+    ).rejects.toThrow('arXiv API error: 500 Internal Server Error');
+  });
+
   it('should return empty array on network error', async () => {
     global.fetch = vi.fn(() =>
       Promise.reject(new Error('Network error'))
@@ -431,6 +445,16 @@ describe('ArxivClient - Error Handling', () => {
     const papers = await client.search({ query: 'cat:cs.AI' });
 
     expect(papers).toHaveLength(0);
+  });
+
+  it('should throw on network error when requested', async () => {
+    global.fetch = vi.fn(() =>
+      Promise.reject(new Error('Network error'))
+    );
+
+    await expect(
+      client.search({ query: 'cat:cs.AI' }, { throwOnError: true })
+    ).rejects.toThrow('Network error');
   });
 
   it('should return empty array on invalid XML', async () => {
@@ -477,6 +501,7 @@ describe('ArxivClient - Search Parameters', () => {
       sortOrder: 'ascending',
     });
 
+    expect(capturedUrl).toContain('https://export.arxiv.org/api/query');
     expect(capturedUrl).toContain('search_query=cat%3Acs.AI');
     expect(capturedUrl).toContain('max_results=20');
     expect(capturedUrl).toContain('start=10');

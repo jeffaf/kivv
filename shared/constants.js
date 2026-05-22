@@ -8,7 +8,7 @@
 // arXiv API Configuration
 // =============================================================================
 /** arXiv API base URL for querying papers */
-export const ARXIV_API_BASE_URL = 'http://export.arxiv.org/api/query';
+export const ARXIV_API_BASE_URL = 'https://export.arxiv.org/api/query';
 /** arXiv rate limit: 1 request per interval */
 export const ARXIV_RATE_LIMIT_REQUESTS = 1;
 /** arXiv rate limit interval: 3 seconds between requests */
@@ -26,13 +26,19 @@ export const ANTHROPIC_API_BASE_URL = 'https://api.anthropic.com/v1';
 export const ANTHROPIC_RATE_LIMIT_REQUESTS = 5;
 /** Anthropic rate limit interval: 1 second */
 export const ANTHROPIC_RATE_LIMIT_INTERVAL_MS = 1000;
+/** Anthropic rate limit delay: 200ms between requests (5 req/s = 200ms) */
+export const ANTHROPIC_RATE_LIMIT_MS = 200;
+/** Anthropic jitter minimum: 50ms */
+export const ANTHROPIC_JITTER_MIN_MS = 50;
+/** Anthropic jitter maximum: 100ms */
+export const ANTHROPIC_JITTER_MAX_MS = 100;
 // =============================================================================
 // Model Identifiers
 // =============================================================================
-/** Claude 3.5 Haiku model identifier (for triage) */
-export const CLAUDE_HAIKU_MODEL = 'claude-3-5-haiku-20241022';
-/** Claude 3.5 Sonnet model identifier (for summaries) */
-export const CLAUDE_SONNET_MODEL = 'claude-3-5-sonnet-20241022';
+/** Claude Haiku model identifier (for triage) - 3.5 was deprecated, using 3.0 */
+export const CLAUDE_HAIKU_MODEL = 'claude-3-haiku-20240307';
+/** Claude Sonnet model identifier (for summaries) - using Claude 4 Sonnet */
+export const CLAUDE_SONNET_MODEL = 'claude-sonnet-4-20250514';
 // =============================================================================
 // Token Limits
 // =============================================================================
