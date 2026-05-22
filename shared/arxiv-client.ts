@@ -56,6 +56,8 @@ export class ArxivClient {
   private static readonly RATE_LIMIT_MS = 3000;  // 3 seconds between requests
   private static readonly MIN_JITTER_MS = 100;   // Minimum random jitter
   private static readonly MAX_JITTER_MS = 500;   // Maximum random jitter
+  private static readonly MAX_RETRIES = 3;
+  private static readonly RETRY_BASE_MS = 10000;
 
   private lastRequestTime = 0;
 
@@ -120,19 +122,31 @@ export class ArxivClient {
     url.searchParams.set('sortOrder', params.sortOrder || 'descending');
 
     try {
-      const response = await fetch(url.toString());
-
-      if (!response.ok) {
-        const message = `arXiv API error: ${response.status} ${response.statusText}`;
-        console.error(message);
-        if (options.throwOnError) {
-          throw new Error(message);
+      for (let attempt = 1; attempt <= ArxivClient.MAX_RETRIES; attempt++) {
+        if (attempt > 1) {
+          await this.enforceRateLimit();
         }
-        return [];
+
+        const response = await fetch(url.toString());
+
+        if (!response.ok) {
+          const message = `arXiv API error: ${response.status} ${response.statusText}`;
+          console.error(message);
+          if (this.shouldRetry(response.status) && attempt < ArxivClient.MAX_RETRIES) {
+            await this.waitBeforeRetry(response, attempt);
+            continue;
+          }
+          if (options.throwOnError) {
+            throw new Error(message);
+          }
+          return [];
+        }
+
+        const xmlText = await response.text();
+        return this.parseAtomXml(xmlText);
       }
 
-      const xmlText = await response.text();
-      return this.parseAtomXml(xmlText);
+      return [];
     } catch (error) {
       if (!(error instanceof Error && error.message.startsWith('arXiv API error:'))) {
         console.error('arXiv API request failed:', error);
@@ -142,6 +156,20 @@ export class ArxivClient {
       }
       return [];
     }
+  }
+
+  private shouldRetry(status: number): boolean {
+    return status === 429 || status === 503;
+  }
+
+  private async waitBeforeRetry(response: Response, attempt: number): Promise<void> {
+    const retryAfter = response.headers.get('Retry-After');
+    const retryAfterMs = retryAfter ? Number(retryAfter) * 1000 : NaN;
+    const backoffMs = Number.isFinite(retryAfterMs)
+      ? retryAfterMs
+      : ArxivClient.RETRY_BASE_MS * attempt;
+
+    await sleep(backoffMs);
   }
 
   /**

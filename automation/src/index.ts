@@ -380,6 +380,9 @@ async function runAutomation(
       checkpoint.last_user_id = user.id; // Mark as processed even on error
       checkpoint.last_paper_arxiv_id = undefined; // Clear paper tracking on error
       await saveCheckpoint(env, checkpointKey, checkpoint);
+      if (errorMsg.startsWith('All arXiv topic queries failed')) {
+        throw error;
+      }
       continue; // Continue with next user
     }
   }
