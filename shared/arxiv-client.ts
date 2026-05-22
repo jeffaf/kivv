@@ -39,6 +39,16 @@ export interface ArxivSearchOptions {
   throwOnError?: boolean;
 }
 
+export class ArxivApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly statusText: string
+  ) {
+    super(`arXiv API error: ${status} ${statusText}`);
+    this.name = 'ArxivApiError';
+  }
+}
+
 /**
  * arXiv API client with strict rate limiting
  *
@@ -127,17 +137,22 @@ export class ArxivClient {
           await this.enforceRateLimit();
         }
 
-        const response = await fetch(url.toString());
+        const response = await fetch(url.toString(), {
+          headers: {
+            'User-Agent': 'kivv/1.0 (https://github.com/jeffaf/kivv; research automation)',
+            'Accept': 'application/atom+xml, application/xml;q=0.9, text/xml;q=0.8'
+          }
+        });
 
         if (!response.ok) {
-          const message = `arXiv API error: ${response.status} ${response.statusText}`;
-          console.error(message);
+          const error = new ArxivApiError(response.status, response.statusText);
+          console.error(error.message);
           if (this.shouldRetry(response.status) && attempt < ArxivClient.MAX_RETRIES) {
             await this.waitBeforeRetry(response, attempt);
             continue;
           }
           if (options.throwOnError) {
-            throw new Error(message);
+            throw error;
           }
           return [];
         }
@@ -148,7 +163,7 @@ export class ArxivClient {
 
       return [];
     } catch (error) {
-      if (!(error instanceof Error && error.message.startsWith('arXiv API error:'))) {
+      if (!(error instanceof ArxivApiError)) {
         console.error('arXiv API request failed:', error);
       }
       if (options.throwOnError) {
