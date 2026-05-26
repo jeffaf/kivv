@@ -351,7 +351,8 @@ async function runAutomation(
         checkpoint.last_user_id = user.id;
         checkpoint.last_paper_arxiv_id = undefined;
         await saveCheckpoint(env, checkpointKey, checkpoint);
-        throw new Error(`Upstream unavailable while processing ${user.username}`);
+        batchExhausted = true;
+        break;
       }
 
       // Update checkpoint - only increment users_processed if we finished this user completely
