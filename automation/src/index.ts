@@ -180,7 +180,8 @@ export default {
             papers_skipped: result.checkpoint.papers_skipped,
             papers_processed_this_run: result.checkpoint.papers_processed_this_run,
             total_cost: result.checkpoint.total_cost,
-            completed: result.checkpoint.completed
+            completed: result.checkpoint.completed,
+            errors: result.checkpoint.errors
           },
           timestamp: new Date().toISOString()
         }), {
@@ -386,9 +387,6 @@ async function runAutomation(
       checkpoint.last_user_id = user.id; // Mark as processed even on error
       checkpoint.last_paper_arxiv_id = undefined; // Clear paper tracking on error
       await saveCheckpoint(env, checkpointKey, checkpoint);
-      if (errorMsg.startsWith('All arXiv topic queries failed')) {
-        throw error;
-      }
       continue; // Continue with next user
     }
   }
@@ -536,7 +534,15 @@ async function processUser(
   }
 
   if (paperMap.size === 0 && queryErrors.length === topicsQueried) {
-    throw new Error(`All arXiv topic queries failed for ${user.username}: ${queryErrors.join('; ')}`);
+    console.warn(`[USER:${user.username}] All arXiv topic queries failed; treating as upstream unavailable for this run`);
+    return {
+      papers_found: 0,
+      papers_summarized: 0,
+      papers_skipped: 0,
+      cost: 0,
+      batch_exhausted: false,
+      query_errors: queryErrors
+    };
   }
 
   // Convert map to array, sorted by most recent first

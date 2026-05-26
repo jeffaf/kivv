@@ -40,7 +40,7 @@ jobs:
               --max-time 300 \
               --request POST \
               --header "Authorization: Bearer ${force_secret}" \
-              "https://kivv-automation.jeffbarron.workers.dev/run?force=true&max_papers=1&max_topic_queries=5")"
+              "https://kivv-automation.jeffbarron.workers.dev/run?force=true&max_papers=1&max_topic_queries=1")"
 
             echo "force run status: ${status_code}"
             cat "$response_file"
