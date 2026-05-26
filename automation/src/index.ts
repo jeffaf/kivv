@@ -52,6 +52,7 @@ interface UserProcessingResult {
   papers_skipped: number;
   cost: number;
   batch_exhausted: boolean;        // True if we hit batch limit
+  upstream_unavailable?: boolean;  // True if every upstream topic query failed
   last_arxiv_id?: string;          // Last paper arxiv_id processed
   query_errors?: string[];         // Non-fatal arXiv topic query errors
 }
@@ -343,6 +344,16 @@ async function runAutomation(
         options.maxTopicQueries
       );
 
+      if (result.upstream_unavailable) {
+        if (result.query_errors && result.query_errors.length > 0) {
+          checkpoint.errors.push(...result.query_errors);
+        }
+        checkpoint.last_user_id = user.id;
+        checkpoint.last_paper_arxiv_id = undefined;
+        await saveCheckpoint(env, checkpointKey, checkpoint);
+        throw new Error(`Upstream unavailable while processing ${user.username}`);
+      }
+
       // Update checkpoint - only increment users_processed if we finished this user completely
       if (!result.batch_exhausted) {
         checkpoint.users_processed++;
@@ -541,6 +552,7 @@ async function processUser(
       papers_skipped: 0,
       cost: 0,
       batch_exhausted: false,
+      upstream_unavailable: true,
       query_errors: queryErrors
     };
   }
