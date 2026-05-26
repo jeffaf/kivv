@@ -114,6 +114,9 @@ export interface Env {
   KV_NAMESPACE_ID: string;
   R2_BUCKET_NAME: string;
   NTFY_TOPIC?: string;
+  CRON_SECRET?: string;
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_CHAT_ID?: string;
 }
 
 // =============================================================================

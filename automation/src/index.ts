@@ -67,6 +67,7 @@ interface AutomationResult {
 
 interface AutomationOptions {
   force?: boolean;
+  maxPapers?: number;
 }
 
 // =============================================================================
@@ -160,7 +161,8 @@ export default {
       try {
         console.log('[MANUAL] Manual automation run triggered');
         const force = url.searchParams.get('force') === 'true';
-        const result = await runAutomation(env, { force });
+        const maxPapers = parsePositiveInt(url.searchParams.get('max_papers'));
+        const result = await runAutomation(env, { force, maxPapers });
 
         return new Response(JSON.stringify({
           success: true,
@@ -257,6 +259,7 @@ async function runAutomation(
 ): Promise<AutomationResult> {
   const today = formatDate(new Date());
   const checkpointKey = `checkpoint:automation:${today}`;
+  const batchLimit = options.maxPapers ?? BATCH_SIZE;
 
   // Load or create checkpoint
   const checkpoint: Checkpoint = (!options.force && await loadCheckpoint(env, checkpointKey)) || {
@@ -300,7 +303,7 @@ async function runAutomation(
     };
   }
 
-  console.log(`[AUTOMATION] Processing ${users.results.length} users (batch limit: ${BATCH_SIZE} papers)`);
+  console.log(`[AUTOMATION] Processing ${users.results.length} users (batch limit: ${batchLimit} papers)`);
 
   // Initialize clients
   const arxivClient = new ArxivClient();
@@ -325,7 +328,7 @@ async function runAutomation(
         console.log(`[USER:${user.username}] Resuming from paper: ${resumeFromPaper}`);
       }
 
-      const batchRemaining = BATCH_SIZE - checkpoint.papers_processed_this_run;
+      const batchRemaining = batchLimit - checkpoint.papers_processed_this_run;
       const result = await processUser(
         env,
         user,
@@ -360,7 +363,7 @@ async function runAutomation(
 
       // Check if batch is exhausted
       if (result.batch_exhausted) {
-        console.log(`[BATCH] Batch limit reached (${BATCH_SIZE} papers processed this run)`);
+        console.log(`[BATCH] Batch limit reached (${batchLimit} papers processed this run)`);
         batchExhausted = true;
         break;
       }
@@ -477,7 +480,7 @@ async function processUser(
   const relevanceThreshold = Math.min(
     ...topics.results.map(t => typeof t.relevance_threshold === 'number' ? t.relevance_threshold : 0.7)
   );
-  const shouldGenerateSummaries = topics.results.some(t => t.generate_summaries !== false && t.generate_summaries !== 0);
+  const shouldGenerateSummaries = topics.results.some(t => isTruthyFlag(t.generate_summaries));
 
   // Prefer one combined query per user. This keeps us within arXiv's shared-IP
   // rate limits on Cloudflare Workers, while the paper map still deduplicates
@@ -743,6 +746,19 @@ function buildCombinedTopicQuery(topics: Topic[]): string {
 
 function shouldFallbackToIndividualTopicQueries(error: unknown): boolean {
   return error instanceof ArxivApiError && (error.status === 400 || error.status === 414);
+}
+
+function isTruthyFlag(value: boolean | number | null | undefined): boolean {
+  return value !== false && value !== 0;
+}
+
+function parsePositiveInt(value: string | null): number | undefined {
+  if (!value) return undefined;
+
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+
+  return parsed;
 }
 
 // =============================================================================

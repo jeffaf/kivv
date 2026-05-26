@@ -33,10 +33,20 @@ jobs:
           bunx wrangler deploy
 
           for attempt in 1 2 3 4 5; do
-            if curl --fail --show-error --silent \
+            response_file="$(mktemp)"
+            status_code="$(curl --show-error --silent \
+              --output "$response_file" \
+              --write-out "%{http_code}" \
+              --max-time 540 \
               --request POST \
               --header "Authorization: Bearer ${force_secret}" \
-              "https://kivv-automation.jeffbarron.workers.dev/run?force=true"; then
+              "https://kivv-automation.jeffbarron.workers.dev/run?force=true&max_papers=5")"
+
+            echo "force run status: ${status_code}"
+            cat "$response_file"
+            echo
+
+            if [[ "$status_code" =~ ^2[0-9][0-9]$ ]]; then
               exit 0
             fi
 

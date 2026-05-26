@@ -22,6 +22,8 @@ import {
   ANTHROPIC_API_BASE_URL,
 } from './constants';
 
+const CLAUDE_FETCH_TIMEOUT_MS = 45000;
+
 // =============================================================================
 // Types & Interfaces
 // =============================================================================
@@ -374,7 +376,7 @@ Provide ONLY the 3-sentence summary, nothing else.`;
     prompt: string,
     maxTokens: number
   ): Promise<AnthropicResponse> {
-    const response = await fetch(`${ANTHROPIC_API_BASE_URL}/messages`, {
+    const response = await fetchWithTimeout(`${ANTHROPIC_API_BASE_URL}/messages`, {
       method: 'POST',
       headers: {
         'x-api-key': this.apiKey,
@@ -391,7 +393,7 @@ Provide ONLY the 3-sentence summary, nothing else.`;
           },
         ],
       }),
-    });
+    }, CLAUDE_FETCH_TIMEOUT_MS);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -471,5 +473,20 @@ Provide ONLY the 3-sentence summary, nothing else.`;
    */
   getRemainingBudget(): number {
     return Math.max(0, DAILY_BUDGET_CAP_USD - this.totalCost);
+  }
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
   }
 }

@@ -68,6 +68,7 @@ export class ArxivClient {
   private static readonly MAX_JITTER_MS = 500;   // Maximum random jitter
   private static readonly MAX_RETRIES = 3;
   private static readonly RETRY_BASE_MS = 10000;
+  private static readonly FETCH_TIMEOUT_MS = 20000;
 
   private lastRequestTime = 0;
 
@@ -137,12 +138,12 @@ export class ArxivClient {
           await this.enforceRateLimit();
         }
 
-        const response = await fetch(url.toString(), {
+        const response = await fetchWithTimeout(url.toString(), {
           headers: {
             'User-Agent': 'kivv/1.0 (https://github.com/jeffaf/kivv; research automation)',
             'Accept': 'application/atom+xml, application/xml;q=0.9, text/xml;q=0.8'
           }
-        });
+        }, ArxivClient.FETCH_TIMEOUT_MS);
 
         if (!response.ok) {
           const error = new ArxivApiError(response.status, response.statusText);
@@ -342,6 +343,21 @@ export class ArxivClient {
     }
 
     return null;
+  }
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
