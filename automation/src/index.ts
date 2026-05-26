@@ -68,6 +68,7 @@ interface AutomationResult {
 interface AutomationOptions {
   force?: boolean;
   maxPapers?: number;
+  maxTopicQueries?: number;
 }
 
 // =============================================================================
@@ -162,7 +163,8 @@ export default {
         console.log('[MANUAL] Manual automation run triggered');
         const force = url.searchParams.get('force') === 'true';
         const maxPapers = parsePositiveInt(url.searchParams.get('max_papers'));
-        const result = await runAutomation(env, { force, maxPapers });
+        const maxTopicQueries = parsePositiveInt(url.searchParams.get('max_topic_queries'));
+        const result = await runAutomation(env, { force, maxPapers, maxTopicQueries });
 
         return new Response(JSON.stringify({
           success: true,
@@ -336,7 +338,8 @@ async function runAutomation(
         summarizationClient,
         batchRemaining,
         checkpoint, // Pass checkpoint for budget checking
-        resumeFromPaper
+        resumeFromPaper,
+        options.maxTopicQueries
       );
 
       // Update checkpoint - only increment users_processed if we finished this user completely
@@ -453,7 +456,8 @@ async function processUser(
   summarizationClient: SummarizationClient,
   batchRemaining: number,
   checkpoint: Checkpoint,
-  resumeFromPaperId?: string
+  resumeFromPaperId?: string,
+  maxTopicQueries?: number
 ): Promise<UserProcessingResult> {
 
   // Get user's enabled topics
@@ -485,12 +489,21 @@ async function processUser(
   const paperMap = new Map<string, { arxiv_id: string; title: string; authors: string; abstract: string; categories: string; published_date: string; pdf_url: string }>();
   const queryErrors: string[] = [];
   const targetPaperCount = Math.max(batchRemaining, 1);
+  const topicQueryLimit = maxTopicQueries
+    ? Math.min(maxTopicQueries, topics.results.length)
+    : topics.results.length;
+  let topicsQueried = 0;
 
   for (const topic of topics.results) {
     if (paperMap.size >= targetPaperCount) {
       console.log(`[USER:${user.username}] Collected ${paperMap.size} papers, stopping topic queries for this run`);
       break;
     }
+    if (topicsQueried >= topicQueryLimit) {
+      console.log(`[USER:${user.username}] Topic query limit reached (${topicQueryLimit}), stopping topic queries for this run`);
+      break;
+    }
+    topicsQueried++;
 
     try {
       console.log(`[USER:${user.username}] Querying topic: ${topic.topic_name}`);
@@ -522,7 +535,7 @@ async function processUser(
     }
   }
 
-  if (paperMap.size === 0 && queryErrors.length === topics.results.length) {
+  if (paperMap.size === 0 && queryErrors.length === topicsQueried) {
     throw new Error(`All arXiv topic queries failed for ${user.username}: ${queryErrors.join('; ')}`);
   }
 

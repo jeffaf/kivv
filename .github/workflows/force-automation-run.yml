@@ -37,10 +37,10 @@ jobs:
             status_code="$(curl --show-error --silent \
               --output "$response_file" \
               --write-out "%{http_code}" \
-              --max-time 540 \
+              --max-time 300 \
               --request POST \
               --header "Authorization: Bearer ${force_secret}" \
-              "https://kivv-automation.jeffbarron.workers.dev/run?force=true&max_papers=5")"
+              "https://kivv-automation.jeffbarron.workers.dev/run?force=true&max_papers=1&max_topic_queries=5")"
 
             echo "force run status: ${status_code}"
             cat "$response_file"
