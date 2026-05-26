@@ -9,10 +9,10 @@
 // 5. Use checkpoints to handle failures gracefully
 // =============================================================================
 
-import { Env, User, Topic, Paper } from '../../shared/types';
-import { ArxivApiError, ArxivClient, ArxivQueryBuilder } from '../../shared/arxiv-client';
+import { Env, User, Topic } from '../../shared/types';
+import { ArxivClient } from '../../shared/arxiv-client';
 import { SummarizationClient } from '../../shared/summarization';
-import { hashContent, formatDate } from '../../shared/utils';
+import { formatDate } from '../../shared/utils';
 import { CLAUDE_SONNET_MODEL } from '../../shared/constants';
 
 // =============================================================================
@@ -482,80 +482,47 @@ async function processUser(
   );
   const shouldGenerateSummaries = topics.results.some(t => isTruthyFlag(t.generate_summaries));
 
-  // Prefer one combined query per user. This keeps us within arXiv's shared-IP
-  // rate limits on Cloudflare Workers, while the paper map still deduplicates
-  // overlapping topic hits.
   const paperMap = new Map<string, { arxiv_id: string; title: string; authors: string; abstract: string; categories: string; published_date: string; pdf_url: string }>();
   const queryErrors: string[] = [];
-  let runIndividualFallback = false;
-  const combinedQuery = buildCombinedTopicQuery(topics.results);
-  const combinedMaxResults = clampTopicMaxResults(
-    topics.results.reduce((total, topic) => total + normalizeTopicMaxResults(topic.max_papers_per_day), 0)
-  );
+  const targetPaperCount = Math.max(batchRemaining, 1);
 
-  try {
-    console.log(`[USER:${user.username}] Querying combined topic set`);
-
-    const combinedPapers = await arxivClient.search({
-      query: combinedQuery,
-      maxResults: combinedMaxResults,
-      sortBy: 'submittedDate',
-      sortOrder: 'descending'
-    }, {
-      throwOnError: true
-    });
-
-    console.log(`[USER:${user.username}] Combined topic query returned ${combinedPapers.length} papers`);
-
-    for (const paper of combinedPapers) {
-      paperMap.set(paper.arxiv_id, paper);
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`[USER:${user.username}] Error querying combined topic set:`, error);
-    queryErrors.push(`${user.username}/combined-topics: ${message}`);
-
-    if (!shouldFallbackToIndividualTopicQueries(error)) {
-      throw new Error(`All arXiv topic queries failed for ${user.username}: ${queryErrors.join('; ')}`);
+  for (const topic of topics.results) {
+    if (paperMap.size >= targetPaperCount) {
+      console.log(`[USER:${user.username}] Collected ${paperMap.size} papers, stopping topic queries for this run`);
+      break;
     }
 
-    console.log(`[USER:${user.username}] Combined query was rejected; falling back to individual topic queries`);
-    runIndividualFallback = true;
-  }
+    try {
+      console.log(`[USER:${user.username}] Querying topic: ${topic.topic_name}`);
+      const remainingNeeded = targetPaperCount - paperMap.size;
+      const maxResults = clampTopicMaxResults(
+        Math.min(normalizeTopicMaxResults(topic.max_papers_per_day), remainingNeeded)
+      );
 
-  if (runIndividualFallback) {
-    for (const topic of topics.results) {
-      try {
-        console.log(`[USER:${user.username}] Querying topic: ${topic.topic_name}`);
-        const maxResults = clampTopicMaxResults(topic.max_papers_per_day);
+      const topicPapers = await arxivClient.search({
+        query: topic.arxiv_query,
+        maxResults,
+        sortBy: 'submittedDate',
+        sortOrder: 'descending'
+      }, {
+        throwOnError: true
+      });
 
-        const topicPapers = await arxivClient.search({
-          query: topic.arxiv_query,
-          maxResults,
-          sortBy: 'submittedDate',
-          sortOrder: 'descending'
-        }, {
-          throwOnError: true
-        });
+      console.log(`[USER:${user.username}] Topic "${topic.topic_name}" returned ${topicPapers.length} papers`);
 
-        console.log(`[USER:${user.username}] Topic "${topic.topic_name}" returned ${topicPapers.length} papers`);
-
-        // Add to map (deduplicates automatically)
-        for (const paper of topicPapers) {
-          if (!paperMap.has(paper.arxiv_id)) {
-            paperMap.set(paper.arxiv_id, paper);
-          }
+      for (const paper of topicPapers) {
+        if (!paperMap.has(paper.arxiv_id)) {
+          paperMap.set(paper.arxiv_id, paper);
         }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error(`[USER:${user.username}] Error querying topic "${topic.topic_name}":`, error);
-        queryErrors.push(`${user.username}/${topic.topic_name}: ${message}`);
-        // Continue with other topics even if one fails
       }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[USER:${user.username}] Error querying topic "${topic.topic_name}":`, error);
+      queryErrors.push(`${user.username}/${topic.topic_name}: ${message}`);
     }
   }
 
-  if (paperMap.size === 0 && runIndividualFallback && queryErrors.length > topics.results.length) {
+  if (paperMap.size === 0 && queryErrors.length === topics.results.length) {
     throw new Error(`All arXiv topic queries failed for ${user.username}: ${queryErrors.join('; ')}`);
   }
 
@@ -736,16 +703,6 @@ function normalizeTopicMaxResults(maxPapersPerDay: number | undefined | null): n
   }
 
   return Math.max(Math.trunc(maxPapersPerDay), 1);
-}
-
-function buildCombinedTopicQuery(topics: Topic[]): string {
-  return topics
-    .map(topic => `(${topic.arxiv_query})`)
-    .join(' OR ');
-}
-
-function shouldFallbackToIndividualTopicQueries(error: unknown): boolean {
-  return error instanceof ArxivApiError && (error.status === 400 || error.status === 414);
 }
 
 function isTruthyFlag(value: boolean | number | null | undefined): boolean {
