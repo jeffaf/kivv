@@ -1,8 +1,6 @@
 -- Tighten Jeff's Kivv collection around cybersecurity and offensive security.
 -- Apply to the production D1 database after deploying the matching changes.
 
-BEGIN TRANSACTION;
-
 UPDATE topics
 SET topic_name = 'Offensive Security & Vulnerability Research',
     arxiv_query = 'cat:cs.CR AND (all:"penetration testing" OR all:"exploit development" OR all:"vulnerability research" OR all:"binary exploitation" OR all:"memory corruption" OR all:"remote code execution" OR all:"privilege escalation" OR all:"authentication bypass")',
@@ -62,5 +60,3 @@ SET topic_name = 'Windows, Endpoint & Driver Security',
     enabled = 1
 WHERE id = 26
   AND user_id = (SELECT id FROM users WHERE username = 'jeff');
-
-COMMIT;
