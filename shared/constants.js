@@ -36,9 +36,9 @@ export const ANTHROPIC_JITTER_MAX_MS = 100;
 // Model Identifiers
 // =============================================================================
 /** Claude Haiku model identifier (for triage) - 3.5 was deprecated, using 3.0 */
-export const CLAUDE_HAIKU_MODEL = 'claude-3-haiku-20240307';
+export const CLAUDE_HAIKU_MODEL = 'claude-haiku-4-5-20251001';
 /** Claude Sonnet model identifier (for summaries) - using Claude 4 Sonnet */
-export const CLAUDE_SONNET_MODEL = 'claude-sonnet-4-20250514';
+export const CLAUDE_SONNET_MODEL = 'claude-sonnet-4-6';
 // =============================================================================
 // Token Limits
 // =============================================================================

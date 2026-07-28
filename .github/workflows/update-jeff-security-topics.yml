@@ -1,0 +1,51 @@
+name: Update Jeff Security Topics
+
+on:
+  workflow_dispatch:
+
+jobs:
+  update-topics:
+    runs-on: ubuntu-latest
+    name: Apply and verify Jeff's focused security topics
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: '1.1.38'
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Apply focused topic configuration
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd automation
+          bunx wrangler d1 execute kivv-db \
+            --remote \
+            --file=../shared/tighten-jeff-security-topics.sql
+
+      - name: Verify focused topic configuration
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd automation
+          configured="$(
+            bunx wrangler d1 execute kivv-db \
+              --remote \
+              --json \
+              --command "SELECT COUNT(*) AS configured FROM topics WHERE user_id = (SELECT id FROM users WHERE username = 'jeff') AND relevance_threshold = 0.75 AND max_papers_per_day = 20 AND enabled = 1 AND ((id = 21 AND topic_name = 'Offensive Security & Vulnerability Research') OR (id = 22 AND topic_name = 'AI & Agent Offensive Security') OR (id = 23 AND topic_name = 'Malware, Reverse Engineering & Evasion') OR (id = 24 AND topic_name = 'Fuzzing, Program Analysis & Exploitation') OR (id = 25 AND topic_name = 'Web, API & Cloud Security') OR (id = 26 AND topic_name = 'Windows, Endpoint & Driver Security'))" \
+              | jq -r '.[0].results[0].configured'
+          )"
+          test "$configured" = "6"
+          bunx wrangler d1 execute kivv-db \
+            --remote \
+            --command "SELECT id, topic_name, relevance_threshold, max_papers_per_day, enabled FROM topics WHERE user_id = (SELECT id FROM users WHERE username = 'jeff') ORDER BY id"

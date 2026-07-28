@@ -74,7 +74,7 @@ export function formatDate(date) {
 }
 /**
  * Calculate cost in USD based on token usage
- * From PRD: Haiku $0.25/1M input, $1.25/1M output
+ * Claude Haiku 4.5: $1/1M input, $5/1M output
  *          Sonnet $3/1M input, $15/1M output
  *
  * @param tokens - Number of tokens
@@ -87,8 +87,8 @@ export function formatDate(date) {
  */
 export function calculateCost(tokens, model) {
     const rates = {
-        'haiku-input': 0.25 / 1_000_000,
-        'haiku-output': 1.25 / 1_000_000,
+        'haiku-input': 1 / 1_000_000,
+        'haiku-output': 5 / 1_000_000,
         'sonnet-input': 3.0 / 1_000_000,
         'sonnet-output': 15.0 / 1_000_000,
     };

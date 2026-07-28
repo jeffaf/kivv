@@ -86,7 +86,7 @@ describe('Shared Utils', () => {
 
   it('should calculate costs correctly', () => {
     const cost = calculateCost(1000000, 'haiku-input');
-    expect(cost).toBe(0.25); // $0.25 per 1M tokens
+    expect(cost).toBe(1.0); // $1 per 1M tokens
 
     const costSonnet = calculateCost(1000000, 'sonnet-output');
     expect(costSonnet).toBe(15.0); // $15 per 1M tokens
@@ -118,8 +118,8 @@ describe('Shared Constants', () => {
   });
 
   it('should export model identifiers', () => {
-    expect(CLAUDE_HAIKU_MODEL).toBe('claude-3-haiku-20240307');
-    expect(CLAUDE_SONNET_MODEL).toBe('claude-sonnet-4-20250514');
+    expect(CLAUDE_HAIKU_MODEL).toBe('claude-haiku-4-5-20251001');
+    expect(CLAUDE_SONNET_MODEL).toBe('claude-sonnet-4-6');
   });
 
   it('should export token limits', () => {

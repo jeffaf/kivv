@@ -191,6 +191,25 @@ describe('SummarizationClient', () => {
       expect(result.relevance_score).toBeLessThanOrEqual(1);
     });
 
+    it('uses the matched security topic and strict offensive-security criteria', async () => {
+      mockFetch([mockHaikuResponse(0.4)]);
+
+      await client.summarize(
+        'Test Paper',
+        'Test abstract',
+        ['Windows, Endpoint & Driver Security']
+      );
+
+      const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+      const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body);
+      const prompt = requestBody.messages[0].content;
+
+      expect(prompt).toContain('MATCHED INTERESTS: Windows, Endpoint & Driver Security');
+      expect(prompt).toContain('Windows kernel/driver');
+      expect(prompt).toContain('Pure cryptography');
+      expect(prompt).toContain('score below 0.75');
+    });
+
     it('handles invalid scores by defaulting to 0.5', async () => {
       mockFetch([
         {
@@ -217,9 +236,9 @@ describe('SummarizationClient', () => {
         ['AI']
       );
 
-      // Haiku: 150 input tokens * $0.25/1M = $0.0000375
-      //        3 output tokens * $1.25/1M = $0.00000375
-      const expectedHaikuCost = 150 * (0.25 / 1_000_000) + 3 * (1.25 / 1_000_000);
+      // Haiku 4.5: 150 input tokens * $1/1M = $0.00015
+      //            3 output tokens * $5/1M = $0.000015
+      const expectedHaikuCost = 150 * (1.0 / 1_000_000) + 3 * (5.0 / 1_000_000);
 
       expect(result.haiku_cost).toBeCloseTo(expectedHaikuCost, 8);
     });
@@ -500,6 +519,7 @@ describe('SummarizationClient', () => {
       expect(result.haiku_cost).toBe(0);
       expect(result.sonnet_cost).toBe(0);
       expect(result.total_cost).toBe(0);
+      expect(result.error).toContain('500 Internal Server Error');
     });
 
     it('handles rate limit errors', async () => {
@@ -513,6 +533,7 @@ describe('SummarizationClient', () => {
 
       expect(result.summary).toBeNull();
       expect(result.skipped_reason).toBe('error');
+      expect(result.error).toContain('429 Too Many Requests');
     });
 
     it('handles authentication errors', async () => {
@@ -526,6 +547,7 @@ describe('SummarizationClient', () => {
 
       expect(result.summary).toBeNull();
       expect(result.skipped_reason).toBe('error');
+      expect(result.error).toContain('401 Unauthorized');
     });
 
     it('returns content hash even on error', async () => {

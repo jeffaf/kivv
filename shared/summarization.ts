@@ -46,6 +46,8 @@ export interface SummarizationResult {
   total_cost: number;
   /** Reason paper was skipped (if applicable) */
   skipped_reason?: 'irrelevant' | 'budget_exceeded' | 'error';
+  /** Diagnostic detail when skipped_reason is error */
+  error?: string;
 }
 
 /**
@@ -141,8 +143,7 @@ export class SummarizationClient {
    * Stage 1: Use Claude Haiku to quickly assess paper relevance
    *
    * Prompt: Rate relevance of paper to user topics (0.0-1.0)
-   * Model: Claude 3.5 Haiku
-   * Cost: ~$0.00025 per paper
+   * Model: Claude Haiku 4.5
    * Max tokens: 10 (just need the number)
    *
    * @param title - Paper title
@@ -159,24 +160,30 @@ export class SummarizationClient {
 
     const topicList = userTopics.join(', ');
 
-    // Security-focused prompt for offensive security researcher
-    const prompt = `You are evaluating research papers for an offensive security researcher and penetration tester.
+    // Security-focused prompt for an offensive security researcher.
+    const prompt = `You are a strict research-paper filter for a senior offensive security engineer and penetration tester.
 
-USER INTERESTS: ${topicList}
+MATCHED INTERESTS: ${topicList}
 
-SCORING CRITERIA (for offensive security relevance):
-- 0.9-1.0: Novel attack/exploit technique, directly weaponizable, reveals new vulnerability class
-- 0.7-0.9: Security-relevant technique, adversarial ML, practical offensive application
-- 0.5-0.7: Indirectly applicable (ML/AI techniques usable for security, defensive paper with offensive insights)
-- 0.3-0.5: Tangentially related (mentions security but not primary focus)
-- 0.0-0.3: Irrelevant to security research
+HIGH-VALUE AREAS:
+- Concrete vulnerabilities, exploitation primitives, exploit development, and vulnerability discovery
+- Web, API, cloud, Active Directory, Windows kernel/driver, endpoint, and network attack surfaces
+- Fuzzing, program analysis, reverse engineering, malware tradecraft, EDR evasion, and red-team operations
+- AI/LLM/agent attacks only when they demonstrate a concrete attack, security boundary failure, or offensive technique
+- Defensive research only when it yields specific attacker insight or a technique transferable to offensive work
 
-Consider:
-1. Can techniques be weaponized or applied to offensive security?
-2. Does it reveal new attack surfaces or vulnerability patterns?
-3. Are there evasion/obfuscation techniques to learn from?
-4. Could this improve red team operations or penetration testing?
-5. Does it advance adversarial ML, malware analysis, or exploit development?
+LOW-VALUE AREAS:
+- Pure cryptography, privacy protocols, wireless/IoT communications, blockchain economics, policy, governance, compliance, or awareness training
+- Generic intrusion detection, safety, robustness, or defensive-ML benchmarks without a concrete offensive takeaway
+- Papers that merely use security vocabulary or carry the cs.CR category
+
+SCORING:
+- 0.90-1.00: Directly actionable offensive technique, exploit, vulnerability class, attack primitive, or high-value empirical study
+- 0.75-0.89: Strong cybersecurity relevance with clear offensive or vulnerability-research utility
+- 0.50-0.74: Broadly security-related but mostly defensive, theoretical, indirect, or outside the matched interest
+- 0.00-0.49: Tangential or irrelevant
+
+Be conservative. If the abstract does not state a concrete offensive-security or vulnerability-research payoff, score below 0.75.
 
 Paper Title: ${title}
 
@@ -215,8 +222,7 @@ Return ONLY a number between 0.0 and 1.0. No explanation.`;
    * Stage 2: Use Claude Sonnet to generate detailed summary
    *
    * Prompt: Summarize paper in 3 sentences (problem, approach, results)
-   * Model: Claude 3.5 Sonnet
-   * Cost: ~$0.006 per paper
+   * Model: Claude Sonnet 4.6
    * Max tokens: 120
    *
    * @param title - Paper title
@@ -262,9 +268,9 @@ Provide ONLY the 3-sentence summary, nothing else.`;
    * Flow:
    * 1. Generate content hash (for deduplication)
    * 2. Check budget ($1/day circuit breaker)
-   * 3. Stage 1: Haiku triage (~$0.00025)
-   * 4. If score < threshold: Skip Sonnet (save ~$0.006)
-   * 5. If score >= threshold: Stage 2 Sonnet summary (~$0.006)
+   * 3. Stage 1: Haiku triage
+   * 4. If score < threshold: Skip Sonnet
+   * 5. If score >= threshold: Stage 2 Sonnet summary
    *
    * @param title - Paper title
    * @param abstract - Paper abstract
@@ -351,6 +357,7 @@ Provide ONLY the 3-sentence summary, nothing else.`;
         sonnet_cost: 0,
         total_cost: 0,
         skipped_reason: 'error',
+        error: error instanceof Error ? error.message : String(error),
       };
     }
   }
@@ -412,9 +419,9 @@ Provide ONLY the 3-sentence summary, nothing else.`;
   /**
    * Calculate cost based on token usage and model pricing
    *
-   * Haiku pricing:
-   * - Input: $0.25 per 1M tokens
-   * - Output: $1.25 per 1M tokens
+   * Haiku 4.5 pricing:
+   * - Input: $1.00 per 1M tokens
+   * - Output: $5.00 per 1M tokens
    *
    * Sonnet pricing:
    * - Input: $3.00 per 1M tokens
@@ -430,10 +437,10 @@ Provide ONLY the 3-sentence summary, nothing else.`;
   ): number {
     const inputCost =
       usage.input_tokens *
-      (model === 'haiku' ? 0.25 / 1_000_000 : 3.0 / 1_000_000);
+      (model === 'haiku' ? 1.0 / 1_000_000 : 3.0 / 1_000_000);
     const outputCost =
       usage.output_tokens *
-      (model === 'haiku' ? 1.25 / 1_000_000 : 15.0 / 1_000_000);
+      (model === 'haiku' ? 5.0 / 1_000_000 : 15.0 / 1_000_000);
     return inputCost + outputCost;
   }
 

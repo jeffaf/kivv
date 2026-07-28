@@ -21,9 +21,9 @@ export declare const ANTHROPIC_JITTER_MIN_MS = 50;
 /** Anthropic jitter maximum: 100ms */
 export declare const ANTHROPIC_JITTER_MAX_MS = 100;
 /** Claude Haiku model identifier (for triage) - 3.5 was deprecated, using 3.0 */
-export declare const CLAUDE_HAIKU_MODEL = "claude-3-haiku-20240307";
+export declare const CLAUDE_HAIKU_MODEL = "claude-haiku-4-5-20251001";
 /** Claude Sonnet model identifier (for summaries) - using Claude 4 Sonnet */
-export declare const CLAUDE_SONNET_MODEL = "claude-sonnet-4-20250514";
+export declare const CLAUDE_SONNET_MODEL = "claude-sonnet-4-6";
 /** Maximum output tokens for Sonnet summaries (3 bullet points) */
 export declare const MAX_SUMMARY_OUTPUT_TOKENS = 120;
 /** Maximum output tokens for Haiku triage (just a number 0.0-1.0) */

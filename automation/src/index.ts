@@ -20,6 +20,7 @@ import { CLAUDE_SONNET_MODEL } from '../../shared/constants';
 // =============================================================================
 
 const BATCH_SIZE = 20; // Papers per run (cron has 30s wall time, ~300ms per API call × 2 stages × 20 = ~12s)
+const MIN_RELEVANCE_THRESHOLD = 0.75;
 
 // =============================================================================
 // Types & Interfaces
@@ -53,6 +54,7 @@ interface UserProcessingResult {
   cost: number;
   batch_exhausted: boolean;        // True if we hit batch limit
   upstream_unavailable?: boolean;  // True if every upstream topic query failed
+  processing_unavailable?: boolean; // True if every new paper failed summarization
   last_arxiv_id?: string;          // Last paper arxiv_id processed
   query_errors?: string[];         // Non-fatal arXiv topic query errors
 }
@@ -70,6 +72,17 @@ interface AutomationOptions {
   force?: boolean;
   maxPapers?: number;
   maxTopicQueries?: number;
+}
+
+interface CandidatePaper {
+  arxiv_id: string;
+  title: string;
+  authors: string;
+  abstract: string;
+  categories: string;
+  published_date: string;
+  pdf_url: string;
+  matched_topics: Set<string>;
 }
 
 // =============================================================================
@@ -344,13 +357,34 @@ async function runAutomation(
         options.maxTopicQueries
       );
 
-      if (result.upstream_unavailable) {
+      if (result.upstream_unavailable || result.processing_unavailable) {
         if (result.query_errors && result.query_errors.length > 0) {
           checkpoint.errors.push(...result.query_errors);
         }
+        checkpoint.papers_found += result.papers_found;
+        checkpoint.papers_summarized += result.papers_summarized;
+        checkpoint.papers_skipped += result.papers_skipped;
+        checkpoint.papers_processed_this_run += (result.papers_summarized + result.papers_skipped);
+        checkpoint.total_cost += result.cost;
         checkpoint.last_user_id = user.id;
         checkpoint.last_paper_arxiv_id = undefined;
         await saveCheckpoint(env, checkpointKey, checkpoint);
+
+        const failureKind = result.upstream_unavailable
+          ? 'arXiv collection failed'
+          : 'paper summarization failed';
+        await sendAutomationHealthAlert(
+          env,
+          `kivv ${failureKind} on ${checkpoint.date}`,
+          [
+            `User: ${user.username}`,
+            `Papers found: ${result.papers_found}`,
+            `Papers summarized: ${result.papers_summarized}`,
+            `Errors: ${checkpoint.errors.length}`,
+            ...checkpoint.errors.slice(-3),
+          ].join('\n')
+        );
+
         batchExhausted = true;
         break;
       }
@@ -459,7 +493,7 @@ async function runAutomation(
 /**
  * Process a single user: fetch topics, search arXiv, summarize, store
  */
-async function processUser(
+export async function processUser(
   env: Env,
   user: User,
   arxivClient: ArxivClient,
@@ -489,26 +523,24 @@ async function processUser(
 
   console.log(`[USER:${user.username}] Processing ${topics.results.length} topics`);
 
-  // Collect topic names for relevance scoring
-  const topicNames = topics.results.map(t => t.topic_name);
-  const relevanceThreshold = Math.min(
-    ...topics.results.map(t => typeof t.relevance_threshold === 'number' ? t.relevance_threshold : 0.7)
+  const relevanceThreshold = Math.max(
+    MIN_RELEVANCE_THRESHOLD,
+    Math.min(
+      ...topics.results.map(t => typeof t.relevance_threshold === 'number' ? t.relevance_threshold : 0.7)
+    )
   );
   const shouldGenerateSummaries = topics.results.some(t => isTruthyFlag(t.generate_summaries));
 
-  const paperMap = new Map<string, { arxiv_id: string; title: string; authors: string; abstract: string; categories: string; published_date: string; pdf_url: string }>();
+  const paperMap = new Map<string, CandidatePaper>();
   const queryErrors: string[] = [];
   const targetPaperCount = Math.max(batchRemaining, 1);
   const topicQueryLimit = maxTopicQueries
     ? Math.min(maxTopicQueries, topics.results.length)
     : topics.results.length;
+  const papersPerTopic = Math.max(1, Math.ceil(targetPaperCount / topicQueryLimit));
   let topicsQueried = 0;
 
   for (const topic of topics.results) {
-    if (paperMap.size >= targetPaperCount) {
-      console.log(`[USER:${user.username}] Collected ${paperMap.size} papers, stopping topic queries for this run`);
-      break;
-    }
     if (topicsQueried >= topicQueryLimit) {
       console.log(`[USER:${user.username}] Topic query limit reached (${topicQueryLimit}), stopping topic queries for this run`);
       break;
@@ -517,9 +549,8 @@ async function processUser(
 
     try {
       console.log(`[USER:${user.username}] Querying topic: ${topic.topic_name}`);
-      const remainingNeeded = targetPaperCount - paperMap.size;
       const maxResults = clampTopicMaxResults(
-        Math.min(normalizeTopicMaxResults(topic.max_papers_per_day), remainingNeeded)
+        Math.min(normalizeTopicMaxResults(topic.max_papers_per_day), papersPerTopic)
       );
 
       const topicPapers = await arxivClient.search({
@@ -534,8 +565,14 @@ async function processUser(
       console.log(`[USER:${user.username}] Topic "${topic.topic_name}" returned ${topicPapers.length} papers`);
 
       for (const paper of topicPapers) {
-        if (!paperMap.has(paper.arxiv_id)) {
-          paperMap.set(paper.arxiv_id, paper);
+        const existingPaper = paperMap.get(paper.arxiv_id);
+        if (existingPaper) {
+          existingPaper.matched_topics.add(topic.topic_name);
+        } else {
+          paperMap.set(paper.arxiv_id, {
+            ...paper,
+            matched_topics: new Set([topic.topic_name]),
+          });
         }
       }
     } catch (error) {
@@ -567,6 +604,8 @@ async function processUser(
   let papersProcessed = 0;
   let papersSummarized = 0;
   let papersSkipped = 0;
+  let newPapersAttempted = 0;
+  let summarizationErrors = 0;
   let totalCost = 0;
   let shouldSkip = resumeFromPaperId !== undefined;
   let lastArxivId: string | undefined;
@@ -633,10 +672,11 @@ async function processUser(
         continue;
       }
 
+      newPapersAttempted++;
       const result = await summarizationClient.summarize(
         paper.title,
         paper.abstract,
-        topicNames,
+        Array.from(paper.matched_topics),
         relevanceThreshold,
         checkpoint.total_cost // Pass running total from checkpoint
       );
@@ -646,6 +686,12 @@ async function processUser(
       // Skip if irrelevant (failed triage)
       if (!result.summary) {
         console.log(`[PAPER:${paper.arxiv_id}] Skipped (${result.skipped_reason})`);
+        if (result.skipped_reason === 'error') {
+          summarizationErrors++;
+          queryErrors.push(
+            `${user.username}/${paper.arxiv_id}: ${result.error || 'summarization failed'}`
+          );
+        }
         papersSkipped++;
         papersProcessed++;
         continue;
@@ -716,6 +762,8 @@ async function processUser(
     papers_skipped: papersSkipped,
     cost: totalCost,
     batch_exhausted: false,
+    processing_unavailable:
+      newPapersAttempted > 0 && summarizationErrors === newPapersAttempted,
     last_arxiv_id: lastArxivId,
     query_errors: queryErrors
   };

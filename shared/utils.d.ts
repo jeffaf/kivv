@@ -49,7 +49,7 @@ export declare function parseJsonArray<T>(jsonString: string): T[];
 export declare function formatDate(date: Date): string;
 /**
  * Calculate cost in USD based on token usage
- * From PRD: Haiku $0.25/1M input, $1.25/1M output
+ * Claude Haiku 4.5: $1/1M input, $5/1M output
  *          Sonnet $3/1M input, $15/1M output
  *
  * @param tokens - Number of tokens
