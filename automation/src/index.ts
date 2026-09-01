@@ -893,14 +893,14 @@ async function sendDailyDigestNotification(env: Env): Promise<void> {
   // Fetch top papers by relevance
   const papers = await env.DB
     .prepare(`
-      SELECT title FROM papers
+      SELECT title, arxiv_id FROM papers
       WHERE summary IS NOT NULL
       AND DATE(created_at) = ?
       ORDER BY relevance_score DESC
       LIMIT 5
     `)
     .bind(today)
-    .all<{ title: string }>();
+    .all<{ title: string; arxiv_id: string }>();
 
   const title = `📄 ${paperCount} new paper${paperCount === 1 ? '' : 's'}`;
 
@@ -915,6 +915,7 @@ async function sendDailyDigestNotification(env: Env): Promise<void> {
         ? paper.title.substring(0, 77) + '...'
         : paper.title;
       bodyParts.push(`• ${truncatedTitle}`);
+      bodyParts.push(`  https://arxiv.org/abs/${encodeURIComponent(paper.arxiv_id)}`);
     }
     if (paperCount > 5) {
       bodyParts.push(`...and ${paperCount - 5} more`);
